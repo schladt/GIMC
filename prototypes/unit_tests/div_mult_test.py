@@ -1,8 +1,9 @@
 # use unittest to test the divide function
 import unittest
 import ctypes
-
+import sys
 import contextlib, os
+import json
 
 
 dll = ctypes.CDLL('.\proto.dll')
@@ -52,16 +53,21 @@ def run_tests():
     with open(os.devnull, 'w') as devnull:
             with contextlib.redirect_stdout(devnull):
                 with contextlib.redirect_stderr(devnull):
-                    results = unittest.main(exit=False, buffer=True)
+                    results = unittest.main(exit=False)
     return results
 
 
 if __name__ == '__main__':
-    
+
     results = run_tests()
     num_failures = len(results.result.failures)
     num_errors = len(results.result.errors)
+    num_tests = results.result.testsRun
 
-    print('Number of failures: {}'.format(num_failures))
-    print('Number of errors: {}'.format(num_errors))
-    print('Number of tests run: {}'.format(results.result.testsRun))
+    json_obj = {
+            "num_failures": num_failures,
+            "num_errors": num_errors,
+            "num_tests": num_tests
+        }
+    
+    print(json.dumps(json_obj))
