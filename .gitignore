@@ -1,3 +1,16 @@
 # python files
 *.py[cod]
 __pycache__/
+
+# settings
+settings.json
+
+# jupyter notebook
+.ipynb_checkpoints/
+
+# vscode
+.vscode/
+
+# virtual environment
+env/
+venv/
