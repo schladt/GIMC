@@ -1,6 +1,7 @@
 # Driver program to create prototypes using ChatGPT4 LLM from defined unit tests
 
 import os
+import re
 import subprocess
 import json
 import importlib.util
@@ -59,7 +60,7 @@ def main():
         # step 2: run the prompt through the LLM
         system_prompt = f""" 
             You are an experienced programmer. 
-            Only return code in the {language} programming language.
+            Only return code in the {language} programming language. Do not any text outside of the code block.
             One or more functions along with required imports and global variables should be returned depending on the user input. 
             The function should be named with the user provided name. 
             The function should accept the user provided inputs. 
@@ -83,12 +84,11 @@ def main():
             
             content  = choice['message']['content']
 
-            # strip first and last line if they contain ```
-            if content.startswith("```"):
-                content = "\n".join(content.split("\n")[1:-1])
-
-            if content.endswith("```"):
-                content = "\n".join(content.split("\n")[0:-1])
+            # look for the code block
+            pattern = r'```\S*(.*?)```'
+            matches = re.findall(pattern, content, re.DOTALL)
+            if len(matches) > 0:
+                content = matches[0].strip()
 
             # find the sha256 hash of the content
             hash = hashlib.sha256(content.encode('utf-8')).hexdigest()

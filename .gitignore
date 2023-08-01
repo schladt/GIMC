@@ -7,6 +7,7 @@ settings.json
 
 # jupyter notebook
 .ipynb_checkpoints/
+scratch.ipynb
 
 # vscode
 .vscode/
@@ -14,3 +15,7 @@ settings.json
 # virtual environment
 env/
 venv/
+
+# compiled prototypes
+proto.c
+proto.dll
