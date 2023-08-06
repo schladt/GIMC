@@ -12,7 +12,7 @@ GISM produces code prototypes generated using a LLM which is currently GPT3.5-tu
 
 ## The Super Simple Sandbox
 
-GISM includes a very stripped down malware analysis sandbox. The sandbox is much simpler than nearly all commercial or community malware sandboxes but it is very quick, easy to deploy, and highly customizable. It provides the underlying dynamic analysis for GISM's discriminator network fitness evaluation.
+GISM includes a very stripped down malware analysis sandbox. The sandbox is much simpler than nearly all commercial or community malware sandboxes but it's very quick, easy to deploy, and highly customizable. It provides the underlying dynamic analysis for GISM's discriminator network fitness evaluation.
 
 ### sandbox controller configuration
 
