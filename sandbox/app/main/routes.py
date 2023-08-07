@@ -1,5 +1,6 @@
 import os
 import hashlib
+import datetime
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -7,29 +8,47 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
 
-from flask import request, jsonify, current_app
+from flask import request, jsonify, current_app, url_for, redirect
 from app.main import bp
 from app import db, auth
-from app.models import User, Sample
+from app.models import Sample, Analysis
 
 @auth.verify_token
 def verify_token(token):
     return token == current_app.config['SECRET_TOKEN']
 
-@bp.route('/hello', methods=['POST'])
+@bp.route('/submit/analysis/<hash>', methods=['POST'])
 @auth.login_required
-def say_hello():
-    name = request.json['name']
-    new_user = User(name=name)
-    db.session.add(new_user)
+def submit_analysis(hash):
+    # check for hash type based on length
+    if len(hash) == 32:
+        hash_type = 'md5'
+    elif len(hash) == 40:
+        hash_type = 'sha1'
+    elif len(hash) == 64:
+        hash_type = 'sha256'
+    elif len(hash) == 56:
+        hash_type = 'sha224'
+    elif len(hash) == 96:
+        hash_type = 'sha384'
+    elif len(hash) == 128:
+        hash_type = 'sha512'
+    else:
+        return {"error": "invalid hash"}, 400
+
+    # get sample from database
+    sample = Sample.query.filter_by(**{hash_type: hash}).first()
+    if sample is None:
+        return {"error": "sample not found"}, 404
+    
+    # create analysis object
+    timestamp = datetime.datetime.utcnow()
+    report_path = sample.filepath + '_{0}.json'.format(timestamp.strftime("%Y%m%d%H%M%S"))
+    analysis = Analysis(sample=sample.sha256, report=report_path)
+    db.session.add(analysis)
     db.session.commit()
-    return jsonify({'message': f'Hello, {name}!'}), 200
 
-@bp.route('/users', methods=['GET'])
-def get_users():
-    users = User.query.all()
-    return jsonify({'users': [user.name for user in users]}), 200
-
+    return {"message": "analysis successfully uploaded"}, 200
 
 @bp.route('/submit/sample', methods=['POST'])
 @auth.login_required
@@ -117,18 +136,28 @@ def submit_sample():
         'sha512': sha512.hexdigest(),
     }
 
-    # add sample to database
-    new_sample = Sample(
-        md5=file_hashes['md5'],
-        sha1=file_hashes['sha1'],
-        sha256=file_hashes['sha256'],
-        sha224=file_hashes['sha224'],
-        sha384=file_hashes['sha384'],
-        sha512=file_hashes['sha512'],
-        filepath=fullpath
-    )
+    # update sample if already exists, otherwise create new sample
+    sample = Sample.query.filter_by(sha256=file_hashes['sha256']).first()
+    if not sample:
+        sample = Sample(sha256=file_hashes['sha256'])
+    
+    sample.md5 = file_hashes['md5']
+    sample.sha1 = file_hashes['sha1']
+    sample.sha224 = file_hashes['sha224']
+    sample.sha384 = file_hashes['sha384']
+    sample.sha512 = file_hashes['sha512']
+    sample.filepath = fullpath
 
-    db.session.add(new_sample)
+    db.session.add(sample)
     db.session.commit()
 
+    # check if user requested to submit sample for analysis
+    if 'analyze' in request.form and request.form['analyze'] == 'true':
+        # call submit analysis endpoint
+        response = submit_analysis(file_hashes['sha256'])
+        if response[1] != 200:
+            return response
+        return {"message": "analysis successfully uploaded", 'hashes': file_hashes}, 200
+
     return {"message": "sample successfully uploaded", 'hashes': file_hashes}, 200
+

@@ -16,3 +16,14 @@ class Sample(db.Model):
 
     def __repr__(self):
         return f'<Sample {self.filename}>'
+    
+class Analysis(db.Model):
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sample = db.Column(db.String(64), db.ForeignKey('sample.sha256'))
+    report = db.Column(db.String())
+    status = db.Column(db.Integer, default=0)
+    date_added = db.Column(db.DateTime, default=db.func.current_timestamp())
+    date_updated = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f'<Analysis {self.id}, Report {self.report}>'
