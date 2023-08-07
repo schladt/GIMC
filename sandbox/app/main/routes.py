@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import padding as sym_padding
 from flask import request, jsonify, current_app
 from app.main import bp
 from app import db, auth
-from app.models import User
+from app.models import User, Sample
 
 @auth.verify_token
 def verify_token(token):
@@ -77,13 +77,6 @@ def submit_sample():
     padder = sym_padding.PKCS7(128).padder() # 128-bit block size for AES
 
     encrypted_content = b""
-
-    # # we first save to temp directory before moving to final destination based on hash value
-    # tempdir = os.path.join(current_app.config['DATA_PATH'], 'temp')
-    # if not os.path.exists(tempdir):
-    #     os.makedirs(tempdir)
-
-
     chunk = file.read(4096)
     while len(chunk) > 0:
         # take hash of chunk before encrypting
@@ -123,5 +116,19 @@ def submit_sample():
         'sha384': sha384.hexdigest(),
         'sha512': sha512.hexdigest(),
     }
+
+    # add sample to database
+    new_sample = Sample(
+        md5=file_hashes['md5'],
+        sha1=file_hashes['sha1'],
+        sha256=file_hashes['sha256'],
+        sha224=file_hashes['sha224'],
+        sha384=file_hashes['sha384'],
+        sha512=file_hashes['sha512'],
+        filepath=fullpath
+    )
+
+    db.session.add(new_sample)
+    db.session.commit()
 
     return {"message": "sample successfully uploaded", 'hashes': file_hashes}, 200
