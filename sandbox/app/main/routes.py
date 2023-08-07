@@ -4,8 +4,6 @@ import hashlib
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
 
@@ -80,35 +78,41 @@ def submit_sample():
 
     encrypted_content = b""
 
-    # we first save to temp directory before moving to final destination based on hash value
-    tempdir = os.path.join(current_app.config['DATA_PATH'], 'temp')
-    if not os.path.exists(tempdir):
-        os.makedirs(tempdir)
+    # # we first save to temp directory before moving to final destination based on hash value
+    # tempdir = os.path.join(current_app.config['DATA_PATH'], 'temp')
+    # if not os.path.exists(tempdir):
+    #     os.makedirs(tempdir)
 
-    with open(os.path.join(tempdir, file.filename), 'wb') as f:
-        chunk = file.read(4096)
-        while len(chunk) > 0:
-            # take hash of chunk before encrypting
-            md5.update(chunk)
-            sha1.update(chunk)
-            sha256.update(chunk)
-            sha224.update(chunk)
-            sha384.update(chunk)
-            sha512.update(chunk)
 
-            # encrypt chunk
-            padded_data = padder.update(chunk)
-            encrypted_content += encryptor.update(padded_data)
+    chunk = file.read(4096)
+    while len(chunk) > 0:
+        # take hash of chunk before encrypting
+        md5.update(chunk)
+        sha1.update(chunk)
+        sha256.update(chunk)
+        sha224.update(chunk)
+        sha384.update(chunk)
+        sha512.update(chunk)
 
-            # read next chunk
-            chunk = file.read(4096)
-
-        # finalize encryption
-        padded_data = padder.finalize()
+        # encrypt chunk
+        padded_data = padder.update(chunk)
         encrypted_content += encryptor.update(padded_data)
-        encrypted_content += encryptor.finalize()
 
-        # write salt, iv, and encrypted content to file
+        # read next chunk
+        chunk = file.read(4096)
+
+    # finalize encryption
+    padded_data = padder.finalize()
+    encrypted_content += encryptor.update(padded_data)
+    encrypted_content += encryptor.finalize()
+
+    # write salt, iv, and encrypted content to file on system based on hash value
+    filename = sha256.hexdigest()
+    filepath = os.path.join(current_app.config['DATA_PATH'], filename[0:2], filename[0:4])
+    if not os.path.exists(filepath):
+        os.makedirs(filepath)
+    fullpath = os.path.join(filepath, filename)
+    with open(fullpath, 'wb') as f:
         f.write(salt + iv + encrypted_content)
 
     file_hashes = {
