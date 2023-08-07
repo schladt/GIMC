@@ -21,5 +21,5 @@ The sandbox is controlled by a flask application running on the host machine. Th
 ``` python
 class Config(object):
     SQLALCHEMY_DATABASE_URI = 'sqlite:////tmp/test.db' // change to your database
-    CLIENT_TOKEN = '{{ your client token }}'
+    SECRET_TOKEN = '{{ your secret token }}'
 ```
