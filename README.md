@@ -22,4 +22,15 @@ The sandbox is controlled by a flask application running on the host machine. Th
 class Config(object):
     SQLALCHEMY_DATABASE_URI = 'sqlite:////tmp/test.db' // change to your database
     SECRET_TOKEN = '{{ your secret token }}'
+    DATA_PATH = '/shared/data/danger/'
+    VM_PROVIDER = 'vmware'
+    VMS = [
+        {
+            'name': '/home/mike/vmware/GISM_Win10x64_01/GISM_Win10x64_01.vmx',
+            'ip': '192.168.1.10',
+            'snapshot': 'current'
+        }
+    ]
+    VM_TIMEOUT = 120
+    
 ```
