@@ -24,6 +24,8 @@ class Analysis(db.Model):
     status = db.Column(db.Integer, default=0)
     date_added = db.Column(db.DateTime, default=db.func.current_timestamp())
     date_updated = db.Column(db.DateTime, default=db.func.current_timestamp())
+    analysis_vm = db.Column(db.String(), default=None)
+    error_message = db.Column(db.String(), default=None)
 
     def __repr__(self):
         return f'<Analysis {self.id}, Report {self.report}>'
