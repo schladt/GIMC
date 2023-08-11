@@ -8,7 +8,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
 
-from flask import request, jsonify, current_app, url_for, redirect
+from flask import request, jsonify, current_app, url_for, redirect, send_file
 from app.main import bp
 from app import db, auth
 from app.models import Sample, Analysis
@@ -161,3 +161,47 @@ def submit_sample():
 
     return {"message": "sample successfully uploaded", 'hashes': file_hashes}, 200
 
+@bp.route('/vm/checkin', methods=['GET'])
+@auth.login_required
+def vm_checkin():
+    """ Endpoint for VMs to check in with server and receive new analysis tasks if available """
+    
+    # get IP address of VM
+    ip = request.remote_addr
+
+    # get VM name from the configuration file
+    vm_name = None
+    for vm in current_app.config['VMS']:
+        if ip == vm['ip']:
+            vm_name = vm['name']
+
+    if not vm_name:
+        return {"error": "requesting IP address not registered in configuration file"}, 400
+
+    # check if analysis tasks are available
+    analysis = Analysis.query.filter_by(status=0).first()
+
+    # if no analysis tasks are available, return empty response
+    if not analysis:
+        return {"message": "no analysis tasks available"}, 200
+    
+    # if analysis tasks are available, update database and return file located at analysis.sample
+    analysis.status = 1
+    analysis.analysis_vm = vm_name
+    db.session.commit()
+
+    # get sample from database
+    sample = Sample.query.filter_by(sha256=analysis.sample).first()
+    if sample is None:
+        analysis.status = 4
+        analysis.error_message = "sample not found"
+        db.session.commit()
+        revert_vm(vm_name)
+        return {"error": "sample not found"}, 404
+    
+    # send file to VM WITHOUT decrypting
+    return send_file(sample.filepath, as_attachment=True, download_name=analysis.sample)
+
+def revert_vm(vm_name):
+    """ Revert VM to snapshot """
+    return
