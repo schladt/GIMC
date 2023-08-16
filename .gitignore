@@ -20,3 +20,7 @@ venv/
 # compiled prototypes
 proto.c
 proto.dll
+
+# sysmon files
+sandbox/sysmon/Eula.txt
+sandbox/sysmon/Sysmon*
