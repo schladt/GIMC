@@ -9,6 +9,7 @@ config.py
 # jupyter notebook
 .ipynb_checkpoints/
 scratch.ipynb
+dev.ipynb
 
 # vscode
 .vscode/
@@ -24,3 +25,4 @@ proto.dll
 # sysmon files
 sandbox/sysmon/Eula.txt
 sandbox/sysmon/Sysmon*
+
