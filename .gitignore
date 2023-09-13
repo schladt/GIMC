@@ -28,3 +28,4 @@ sandbox/sysmon/Sysmon*
 
 # exe files
 *.exe
+sample_under_test
