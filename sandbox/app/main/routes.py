@@ -8,7 +8,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
 
-from flask import request, jsonify, current_app, url_for, redirect, send_file
+from flask import request, jsonify, current_app, url_for, redirect, send_file, make_response
 from app.main import bp
 from app import db, auth
 from app.models import Sample, Analysis
@@ -200,7 +200,9 @@ def vm_checkin():
         return {"error": "sample not found"}, 404
     
     # send file to VM WITHOUT decrypting
-    return send_file(sample.filepath, as_attachment=True, download_name=analysis.sample)
+    response = make_response(send_file(sample.filepath, as_attachment=True, download_name=analysis.sample))
+    response.headers['X-Message'] = "sample attached"
+    return response
 
 def revert_vm(vm_name):
     """ Revert VM to snapshot """
