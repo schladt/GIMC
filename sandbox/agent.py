@@ -66,6 +66,41 @@ def decrypt_file(filepath, passphrase):
 
     return unpadded_content
 
+def windows_file_type(file):
+    """ Determine if a file is an EXE or DLL
+    
+    Args:
+        file_path (str): Path to the file to check
+
+    Returns:
+        str: 'EXE' or 'DLL' if the file is a PE file, None otherwise
+    """
+    try:
+        with open(file_path, 'rb') as file:
+            # Read the first 2 bytes to check for 'MZ' magic number
+            if file.read(2) != b'MZ':
+                return None
+
+            # Move to offset 0x3C to read the PE header offset
+            file.seek(0x3C)
+            pe_offset = int.from_bytes(file.read(4), byteorder='little')
+
+            # Move to the PE header offset and skip 'PE\0\0'
+            file.seek(pe_offset + 4)
+
+            # Skip the IMAGE_FILE_HEADER but leave the last 2 bytes for Characteristics
+            file.seek(18, 1) 
+            characteristics = int.from_bytes(file.read(2), byteorder='little')
+
+            if characteristics & 0x2000:  # IMAGE_FILE_DLL
+                return "DLL"
+            else:
+                return "EXE"
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
 def get_static_analysis(filepath):
     """Performs static analysis on a file.
     
@@ -299,18 +334,37 @@ def main():
     with open('sample_under_test', 'wb') as f:
         f.write(r.content)
    
+    # determine if file is dll or exe and add extension
+    file_type = windows_file_type('sample_under_test')
+    if file_type is None:
+        error = 'File is not a PE file'
+        report_error(error)
+    elif file_type == 'EXE':
+        extension = '.exe'
+    elif file_type == 'DLL':
+        extension = '.dll'
+
     # decrypt sample
     content = decrypt_file('sample_under_test', passphrase.encode('utf-8'))
-    with open('sample_under_test', 'wb') as f:
+    with open(f'sample_under_test.{extension}', 'wb') as f:
         f.write(content)
 
     # perform static analysis on sample
-    report = get_static_analysis('sample_under_test')
+    report = get_static_analysis('sample_under_test.exe')
 
     # execute sample
     # upload results
 
     print(report)
+
+def report_error(error):
+    """Reports an error to the server.
+    
+    Args:
+    - error (str): Error message to report.
+    """
+    logging.error(error)
+    exit(1)
 
 if __name__ == '__main__':
     main()

