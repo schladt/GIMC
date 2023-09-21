@@ -6,7 +6,6 @@ import argparse
 import logging
 import os
 import time
-import uuid
 import subprocess
 import shlex
 
@@ -24,11 +23,17 @@ import hashlib
 import requests
 from urllib.parse import urljoin
 
+from collect_procmon import collect_events
+
 # set up logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
 )
+
+# globals
+passphrase = None
+args = None
 
 def decrypt_file(filepath, passphrase):
     """Decrypts a file encrypted using the upload_file function.
@@ -69,7 +74,7 @@ def decrypt_file(filepath, passphrase):
 
     return unpadded_content
 
-def windows_file_type(file):
+def windows_file_type(file_path):
     """ Determine if a file is an EXE or DLL
     
     Args:
@@ -101,7 +106,7 @@ def windows_file_type(file):
                 return "EXE"
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
         return None
 
 def detached_process(cmd):
@@ -288,7 +293,8 @@ def get_static_analysis(filepath):
     elif pe.FILE_HEADER.Machine == pefile.MACHINE_TYPE['IMAGE_FILE_MACHINE_AMD64']:
         mode = CS_MODE_64
     else:
-        print("Unsupported architecture!")
+        logging.error("Unsupported architecture!")
+        return None
 
     # Initialize capstone disassembler for x86/64
     md = Cs(CS_ARCH_X86, mode)
@@ -305,6 +311,9 @@ def get_static_analysis(filepath):
     return static_analysis
 
 def main():
+    global passphrase
+    global args
+
     parser = argparse.ArgumentParser(description='Super Simple Sandbox VM Agent')
     parser.add_argument('-s' , '--server', type=str, help='Server host address w/port example: http://192.168.1.1:1234/', required=True)
     parser.add_argument('-p' , '--passphrase', type=str, help='Passphrase to authenticate to host server', required=True)
@@ -317,7 +326,6 @@ def main():
 
     while True:
         url = urljoin(args.server, 'vm/checkin')
-        print(url)
 
         headers = {
             'Content-Type': 'application/json',
@@ -340,7 +348,7 @@ def main():
         
     # write reponse to file
     # make randon filename as uuid
-    sample_filename = uuid.uuid4().hex
+    sample_filename = 'testsample'
     with open(sample_filename, 'wb') as f:
         f.write(r.content)
    
@@ -349,10 +357,15 @@ def main():
     if file_type is None:
         error = 'File is not a PE file'
         report_error(error)
+        return
     elif file_type == 'EXE':
         extension = '.exe'
     elif file_type == 'DLL':
         extension = '.dll'
+        error = 'DLL files are not supported at this time'
+        report_error(error)
+        return
+    
 
     # decrypt sample
     content = decrypt_file(sample_filename, passphrase.encode('utf-8'))
@@ -374,12 +387,30 @@ def main():
     # wait for sample to finish executing
     time.sleep(args.timeout)
     
-    # save procmon report as csv
+    # save procmon report as csv and collect events
     cmd = shlex.split(f'./procmon/Procmon.exe /AcceptEula /Quiet /Minimized /OpenLog procmon_report.pml /SaveAs procmon_report.csv')
+    dynamic_report = collect_events(target_process_name=sample_filename, csv_file='procmon_report.csv')
+
+    # combine static and dynamic reports
+    report = {
+        'static': static_report,
+        'dynamic': dynamic_report
+    }
 
     # upload results
+    url = urljoin(args.server, 'vm/submit/report')
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {passphrase}'
+    }   
+    r = requests.post(url, headers=headers, json=report)
 
-
+    if r.status_code != 200:
+        logging.error(f'Error submitting results to server: {r.status_code} - {r.json()}')
+    else:
+        logging.info(r.json()['message'])
+    
 def report_error(error):
     """Reports an error to the server.
     
@@ -387,8 +418,18 @@ def report_error(error):
     - error (str): Error message to report.
     """
     logging.error(error)
-    exit(1)
+    url = urljoin(args.server, 'vm/submit/error')
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {passphrase}'
+    }   
+    r = requests.post(url, headers=headers, data=error)
+    if r.status_code != 200:
+        logging.error(f'Error submitting error to server: {r.status_code} - {r.text}')
+    else:
+        logging.info(r.json()['message'])
 
 if __name__ == '__main__':
     main()
-
