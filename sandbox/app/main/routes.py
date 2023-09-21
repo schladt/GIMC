@@ -1,6 +1,7 @@
 import os
 import hashlib
 import datetime
+import json
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -12,6 +13,7 @@ from flask import request, jsonify, current_app, url_for, redirect, send_file, m
 from app.main import bp
 from app import db, auth
 from app.models import Sample, Analysis
+from app import logger
 
 @auth.verify_token
 def verify_token(token):
@@ -193,7 +195,7 @@ def vm_checkin():
     # get sample from database
     sample = Sample.query.filter_by(sha256=analysis.sample).first()
     if sample is None:
-        analysis.status = 4
+        analysis.status = 3
         analysis.error_message = "sample not found"
         db.session.commit()
         revert_vm(vm_name)
@@ -204,6 +206,97 @@ def vm_checkin():
     response.headers['X-Message'] = "sample attached"
     return response
 
+@bp.route('/vm/submit/report', methods=['POST'])
+@auth.login_required
+def vm_submit_static():
+    """ Endpoint for VMs to submit analysis report """
+
+    # get IP address of VM
+    ip = request.remote_addr
+
+    # get VM name from the configuration file
+    vm_name = None
+    for vm in current_app.config['VMS']:
+        if ip == vm['ip']:
+            vm_name = vm['name']
+
+    if not vm_name:
+        return {"error": "requesting IP address not registered in configuration file"}, 400
+    
+    # get analysis from database based on VM name and status
+    analysis = Analysis.query.filter_by(analysis_vm=vm_name, status=1).first()
+    if not analysis:
+        revert_vm(vm_name)
+        return {"error": "no analysis tasks available"}, 400
+    
+    # get report from request
+    report = request.get_json()
+    if not report:
+        analysis.status = 3
+        db.session.commit()
+        revert_vm(vm_name)
+        return {"error": "no report in request"}, 400
+    
+    # save report to file
+    try:
+        with open(analysis.report, 'w') as outfile:
+            json.dump(report, outfile, indent=4)
+    except Exception as e:
+        logger.info(f"error saving report to file: {e}")
+        analysis.status = 3
+        revert_vm(vm_name)
+        return {"error": "error saving report to file"}, 400
+
+    # update analysis status
+    analysis.status = 2
+    db.session.commit()
+
+    # revert VM to snapshot
+    revert_vm(vm_name)
+
+    return
+
+@bp.route('/vm/submit/error', methods=['POST'])
+@auth.login_required
+def vm_submit_error():
+    """ Endpoint for VMs to submit error message """
+
+    # get IP address of VM
+    ip = request.remote_addr
+
+    # get VM name from the configuration file
+    vm_name = None
+    for vm in current_app.config['VMS']:
+        if ip == vm['ip']:
+            vm_name = vm['name']
+
+    if not vm_name:
+        logger.info("requesting IP address not registered in configuration file")
+        return {"error": "requesting IP address not registered in configuration file"}, 400
+    
+    # get analysis from database based on VM name
+    analysis = Analysis.query.filter_by(analysis_vm=vm_name).first()
+    if not analysis:
+        logger.info("no analysis tasks available")
+        return {"error": "no analysis tasks available"}, 400
+    
+    # get error message from request
+    error = request.get_data()
+       
+    # update analysis status
+    if analysis:
+        analysis.status = 3
+        if error:
+            analysis.error_message = error
+        else :
+            analysis.error_message = "no error message in request"
+        db.session.commit()
+
+    # revert VM to snapshot and return
+    revert_vm(vm_name)
+    return {"message": "error message successfully uploaded"}, 200
+
 def revert_vm(vm_name):
     """ Revert VM to snapshot """
+    logger.info(f"reverting VM: {vm_name} to snapshot")
     return
