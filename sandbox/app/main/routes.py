@@ -13,7 +13,13 @@ from flask import request, jsonify, current_app, url_for, redirect, send_file, m
 from app.main import bp
 from app import db, auth
 from app.models import Sample, Analysis
-from app import logger
+
+import logging
+# set up logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
 
 @auth.verify_token
 def verify_token(token):
@@ -230,7 +236,11 @@ def vm_submit_static():
         return {"error": "no analysis tasks available"}, 400
     
     # get report from request
-    report = request.get_json()
+    try:
+        report = request.get_json()
+    except Exception as e:
+        logging.info(f"error getting report from request: {e}")
+        report = None
     if not report:
         analysis.status = 3
         db.session.commit()
@@ -242,7 +252,7 @@ def vm_submit_static():
         with open(analysis.report, 'w') as outfile:
             json.dump(report, outfile, indent=4)
     except Exception as e:
-        logger.info(f"error saving report to file: {e}")
+        logging.info(f"error saving report to file: {e}")
         analysis.status = 3
         revert_vm(vm_name)
         return {"error": "error saving report to file"}, 400
@@ -254,7 +264,7 @@ def vm_submit_static():
     # revert VM to snapshot
     revert_vm(vm_name)
 
-    return
+    return {"message": "report successfully uploaded"}, 200
 
 @bp.route('/vm/submit/error', methods=['POST'])
 @auth.login_required
@@ -271,25 +281,30 @@ def vm_submit_error():
             vm_name = vm['name']
 
     if not vm_name:
-        logger.info("requesting IP address not registered in configuration file")
+        logging.info("requesting IP address not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
     
     # get analysis from database based on VM name
     analysis = Analysis.query.filter_by(analysis_vm=vm_name).first()
     if not analysis:
-        logger.info("no analysis tasks available")
+        logging.info("no analysis tasks available")
         return {"error": "no analysis tasks available"}, 400
     
     # get error message from request
-    error = request.get_data()
-       
+    try: 
+        error_data = request.get_json()
+        if error_data:
+            error_message = error_data['error']
+        else:   
+            error_message = "no error message in request"
+    except Exception as e:
+        logging.info(f"error getting error message from request: {e}")
+        error_message = "error getting error message from request"
+    
     # update analysis status
     if analysis:
         analysis.status = 3
-        if error:
-            analysis.error_message = error
-        else :
-            analysis.error_message = "no error message in request"
+        analysis.error_message = error_message
         db.session.commit()
 
     # revert VM to snapshot and return
@@ -298,5 +313,5 @@ def vm_submit_error():
 
 def revert_vm(vm_name):
     """ Revert VM to snapshot """
-    logger.info(f"reverting VM: {vm_name} to snapshot")
+    logging.info(f"reverting VM: {vm_name} to snapshot (NOT IMPLEMENTED YET)")
     return
