@@ -6,6 +6,9 @@ import argparse
 import logging
 import os
 import time
+import uuid
+import subprocess
+import shlex
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -100,6 +103,12 @@ def windows_file_type(file):
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
+
+def detached_process(cmd):
+    """Runs a command as a detached process."""
+    CREATE_NEW_PROCESS_GROUP = 0x00000200  # note: could get it from subprocess
+    DETACHED_PROCESS = 0x00000008          # 0x8 | 0x200 == 0x208
+    subprocess.Popen(cmd, creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 def get_static_analysis(filepath):
     """Performs static analysis on a file.
@@ -269,7 +278,6 @@ def get_static_analysis(filepath):
                 static_analysis['strings'][str_type] = []
             static_analysis['strings'][str_type].append(string)
 
-
     # perform disassembly for op code count
     static_analysis['opcodes'] = {}
     pe = pefile.PE(filepath)
@@ -331,11 +339,13 @@ def main():
         time.sleep(5)
         
     # write reponse to file
-    with open('sample_under_test', 'wb') as f:
+    # make randon filename as uuid
+    sample_filename = uuid.uuid4().hex
+    with open(sample_filename, 'wb') as f:
         f.write(r.content)
    
     # determine if file is dll or exe and add extension
-    file_type = windows_file_type('sample_under_test')
+    file_type = windows_file_type(sample_filename)
     if file_type is None:
         error = 'File is not a PE file'
         report_error(error)
@@ -345,17 +355,30 @@ def main():
         extension = '.dll'
 
     # decrypt sample
-    content = decrypt_file('sample_under_test', passphrase.encode('utf-8'))
-    with open(f'sample_under_test.{extension}', 'wb') as f:
+    content = decrypt_file(sample_filename, passphrase.encode('utf-8'))
+    sample_filename = sample_filename + extension
+    with open(sample_filename, 'wb') as f:
         f.write(content)
 
     # perform static analysis on sample
-    report = get_static_analysis('sample_under_test.exe')
+    static_report = get_static_analysis(sample_filename)
 
-    # execute sample
+    # turn on process monitor as detached process
+    cmd = shlex.split(f'./procmon/Procmon.exe /AcceptEula /Quiet /Minimized /BackingFile procmon_report.pml /Runtime {args.timeout}')
+    detached_process(cmd)
+
+    # execute sample as detached process
+    cmd = shlex.split(f'{sample_filename}')
+    detached_process(cmd)
+
+    # wait for sample to finish executing
+    time.sleep(args.timeout)
+    
+    # save procmon report as csv
+    cmd = shlex.split(f'./procmon/Procmon.exe /AcceptEula /Quiet /Minimized /OpenLog procmon_report.pml /SaveAs procmon_report.csv')
+
     # upload results
 
-    print(report)
 
 def report_error(error):
     """Reports an error to the server.
