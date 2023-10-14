@@ -71,8 +71,8 @@ def main():
       
         logging.info("Running prompt through LLM")
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            n = 5,
+            model="gpt-3.5-turbo-16k",
+            n = 20,
             messages=[
                 { "role": "system", "content": system_prompt },
                 {"role": "user", "content": user_prompt}
