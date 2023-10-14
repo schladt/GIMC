@@ -34,3 +34,6 @@ sandbox/procmon/procmon*
 # exe files
 *.exe
 sample_under_test
+
+# test files
+root/
