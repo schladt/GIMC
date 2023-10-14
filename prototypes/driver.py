@@ -61,13 +61,11 @@ def main():
 
         # step 2: run the prompt through the LLM
         system_prompt = f""" 
-            You are an experienced programmer. 
-            Only return code in the {language} programming language. Do not any text outside of the code block.
+            You are a computer programmer. 
+            Only return code in the {language} programming language. Do not include any text outside of the code block.
+            All code will be compiled and run on a Windows operating system using the gcc compiler.
+            Do not use d_type anywhere in your code as 'struct dirent' has no member named 'd_type' in Windows.
             One or more functions along with required imports and global variables should be returned depending on the user input. 
-            The function should be named with the user provided name. 
-            The function should accept the user provided inputs. 
-            The function should return the user provided outputs.
-            The function should also perform additional user defined tasks.    
             """
         system_prompt = " ".join(system_prompt.split())
       
@@ -131,6 +129,10 @@ def main():
             if p.returncode != 0:
                 logging.error(f"Error in unit test {file} - {hash}")
                 logging.error(out)
+                # update database with error code (1)
+                query = prototypes.update().where(prototypes.c.hash==hash).values(status=1)
+                conn.execute(query)
+                conn.commit()
                 continue
 
             # Decode output as json
@@ -140,7 +142,11 @@ def main():
                 num_errors = out["num_errors"]
                 num_tests = out["num_tests"]
             except:
-                logging.info(f"Error decoding json in unit test {file} - {hash}")
+                logging.error(f"Error decoding json in unit test {file} - {hash}")
+                # update database with error code (1)
+                query = prototypes.update().where(prototypes.c.hash==hash).values(status=1)
+                conn.execute(query)
+                conn.commit()
                 continue
 
             # log output
@@ -149,7 +155,8 @@ def main():
             logging.info("num_tests: {}".format(num_tests))
 
             # step 6: update the database with the number of failures and errors
-            query = prototypes.update().where(prototypes.c.hash==hash).values(num_errors=num_errors, status=2 if num_errors > 0 else 3)
+            total_errors = num_failures + num_errors
+            query = prototypes.update().where(prototypes.c.hash==hash).values(num_errors=total_errors, status=2 if total_errors > 0 else 3)
             conn.execute(query)
             conn.commit()
            
