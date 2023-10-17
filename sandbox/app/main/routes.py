@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import padding as sym_padding
 from flask import request, jsonify, current_app, url_for, redirect, send_file, make_response
 from app.main import bp
 from app import db, auth
-from app.models import Sample, Analysis
+from app.models import Sample, Analysis, Tag
 
 import logging
 # set up logging
@@ -158,6 +158,32 @@ def submit_sample():
 
     db.session.add(sample)
     db.session.commit()
+
+    # check if tags were submitted
+    if 'tags' in request.form:
+        try:
+            # get tags from request
+            tags = request.form['tags']
+            tags = tags.split(',')
+            tags = [tag.strip() for tag in tags]
+
+            # add tags to sample
+            for tag in tags:
+                # split on =
+                key, value = tag.split('=')
+
+                # check if tag exists
+                tag_obj = db.session.query(Tag).filter_by(key=key, value=value).first()
+                if not tag_obj:
+                    tag_obj = Tag(key=key, value=value)
+                    db.session.add(tag_obj)
+                    db.session.commit()
+                # check if tag is already associated with sample
+                if tag_obj not in sample.tags:
+                    sample.tags.append(tag_obj)
+        except Exception as e:
+            logging.info(f"error adding tags to sample: {e}")
+            return {f'"error": "error adding tags to sample: {e}'}, 400
 
     # check if user requested to submit sample for analysis
     if 'analyze' in request.form and request.form['analyze'] == 'true':

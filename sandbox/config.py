@@ -13,7 +13,7 @@ class Config(object):
     SECRET_TOKEN = settings['sandbox_token']
     DATA_PATH = settings['data_path']
 
-    # EXAMPLE SETTINGS
+    # EXAMPLE VM CONFIG
     VM_PROVIDER = 'vmware'
     VMS = [
         {
