@@ -331,25 +331,28 @@ def main():
     passphrase = args.passphrase
 
     while True:
-        url = urljoin(args.server, 'vm/checkin')
+        try:
+            url = urljoin(args.server, 'vm/checkin')
 
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': f'Bearer {passphrase}'
-        }   
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {passphrase}'
+            }   
 
-        r = requests.get(url, headers=headers)
-        
-        # check if sample attached by looking at headers
-        if 'X-Message' in r.headers and r.headers['X-Message'] == 'sample attached':
-            break
-        
-        if r.status_code != 200:
-            logging.error(f'Error checking in with server: {r.status_code} - {r.json()}')
-        else:
-            logging.info(r.json()['message'])
-
+            r = requests.get(url, headers=headers)
+            
+            # check if sample attached by looking at headers
+            if 'X-Message' in r.headers and r.headers['X-Message'] == 'sample attached':
+                break
+            
+            if r.status_code != 200:
+                logging.error(f'Error checking in with server: {r.status_code} - {r.json()}')
+            else:
+                logging.info(r.json()['message'])
+        except Exception as e:
+            logging.error(f'Error checking in with server: {e}')
+            
         time.sleep(5)
     
     logging.info('received sample from server...')
