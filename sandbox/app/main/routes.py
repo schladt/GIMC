@@ -3,6 +3,7 @@ import hashlib
 import datetime
 import json
 import time
+import threading
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -235,7 +236,7 @@ def vm_checkin():
         analysis.status = 3
         analysis.error_message = "sample not found"
         db.session.commit()
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
         logging.error("sample not found for analysis task {analysis.id}")
         return {"error": "sample not found"}, 404
     
@@ -266,7 +267,7 @@ def vm_submit_static():
     # get analysis from database based on VM name and status
     analysis = Analysis.query.filter_by(analysis_vm=vm_name, status=1).first()
     if not analysis:
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
         logging.error("no analysis task matching vm assignment")
         return {"error": "no analysis tasks available"}, 400
     
@@ -279,7 +280,7 @@ def vm_submit_static():
     if not report:
         analysis.status = 3
         db.session.commit()
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
         logging.error("no report in request")
         return {"error": "no report in request"}, 400
     
@@ -290,7 +291,7 @@ def vm_submit_static():
     except Exception as e:
         logging.error(f"error saving report to file: {e}")
         analysis.status = 3
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
         return {"error": "error saving report to file"}, 400
 
     # update analysis status
@@ -298,7 +299,7 @@ def vm_submit_static():
     db.session.commit()
 
     # revert VM to snapshot
-    revert_vm(vm_name)
+    threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
     logging.info(f"VM {vm_name} successfully submitted report for analysis task {analysis.id} for sample {analysis.sample}")
     return {"message": "report successfully uploaded"}, 200
 
@@ -344,14 +345,14 @@ def vm_submit_error():
         db.session.commit()
 
     # revert VM to snapshot and return
-    revert_vm(vm_name)
+    threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
     return {"message": "error message successfully uploaded"}, 200
 
-def revert_vm(vm_name):
+def revert_vm(vm_name, config):
     """ Revert VM to snapshot """
 
     # read config file for VM provider
-    vm_provider = current_app.config['VM_PROVIDER']
+    vm_provider = config['VM_PROVIDER']
 
     if vm_provider == 'vmware':
         reset_snapshot = vmware_linux_reset_snapshot
@@ -363,7 +364,7 @@ def revert_vm(vm_name):
 
     # get snapshot name from configuration file
     snapshot = None
-    for vm in current_app.config['VMS']:
+    for vm in config['VMS']:
         if vm['name'] == vm_name:
             snapshot = vm['snapshot']
             break
@@ -372,7 +373,9 @@ def revert_vm(vm_name):
         return
 
     # revert VM to snapshot
-    reset_snapshot(vm_name, snapshot)
+    if not reset_snapshot(vm_name, snapshot):
+        logging.error(f"error reverting VM: {vm_name} to snapshot: {snapshot}")
+        return
 
     # wait until VM is ready
     running_vms = get_running_vms()

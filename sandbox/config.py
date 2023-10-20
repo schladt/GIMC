@@ -16,10 +16,20 @@ class Config(object):
     # EXAMPLE VM CONFIG
     VM_PROVIDER = 'vmware'
     VMS = [
+        # {
+        #     'name': '/home/mike/vmware/DEV_Win10x64_02/DEV_Win10x64_02.vmx', 
+        #     'ip': '172.16.99.128',
+        #     'snapshot': 'analysis'
+        # },
         {
-            'name': '/home/mike/vmware/DEV_Win10x64_02/DEV_Win10x64_02.vmx', 
-            'ip': '172.16.99.128',
+            'name': '/home/mike/vmware/GISM_Win10x64_01/GISM_Win10x64_01.vmx', 
+            'ip': '172.16.99.100',
             'snapshot': 'analysis'
-        }
+        },
+        {
+            'name': '/home/mike/vmware/GISM_Win10x64_02/GISM_Win10x64_02.vmx', 
+            'ip': '172.16.99.101',
+            'snapshot': 'analysis'
+        },
     ]
     VM_TIMEOUT = 120

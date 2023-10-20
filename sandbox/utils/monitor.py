@@ -32,9 +32,10 @@ def vmware_linux_reset_snapshot(name, snapshot):
         err = err.decode("utf-8")
         logging.error(out)
         logging.error(err)
-        return
+        return False
     
     logging.info(f"Reset snapshot {name} - {snapshot}")
+    return True
 
 def vmware_linux_start_vm(name):
     """Start VM for VMware on Linux
@@ -75,7 +76,7 @@ def vmware_linux_get_running_vms():
         err = err.decode("utf-8")
         logging.error(out)
         logging.error(err)
-        return
+        return None
     
     vms = out.decode("utf-8").split('\n')[1:]
     vms = [vm.strip() for vm in vms if vm.strip() != '']
@@ -137,12 +138,15 @@ def main():
     while True:
         try:
             # get all analyses currently running
-            session.commit()
             analyses = session.query(Analysis).filter(Analysis.status == 1).all()
 
             # check if time since the date_updated time of the analysis is greater than the timeout time
             for analysis in analyses:
-                # get current time
+                session.commit() # commit to refresh date_updated
+                # make sure status has not changed
+                session.refresh(analysis)
+                if analysis.status != 1:
+                    continue
                 current_time = session.query(sqlalchemy.func.current_timestamp()).scalar()
                 current_time = current_time.replace(tzinfo=None)
                 last_updated = analysis.date_updated.replace(tzinfo=None)
@@ -158,10 +162,14 @@ def main():
                     
                     # reset VM to snapshot
                     # find snapshot name
+                    snapshot = None
                     for vm in vms:
                         if vm['name'] == analysis.analysis_vm:
                             snapshot = vm['snapshot']
                             break
+                    if snapshot is None:
+                        logging.error(f"Could not find snapshot for VM {analysis.analysis_vm}")
+                        continue
                     reset_snapshot(analysis.analysis_vm, snapshot)
                     
                     # wait until VM is ready
