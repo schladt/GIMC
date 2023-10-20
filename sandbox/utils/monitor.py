@@ -1,5 +1,7 @@
 """
 Monitor script to manage virtual machines in the sandbox
+To run this script directly, use the following command:
+`python -m utils.monitor` from the sandbox directory
 """
 
 import platform
@@ -8,15 +10,8 @@ import subprocess
 import sqlalchemy
 import time
 
-from config import Config
-from app.models import Analysis
-
 # set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# global config
-config = Config()
-
 
 def vmware_linux_reset_snapshot(name, snapshot):
     """Reset VM to snapshot for VMware on Linux
@@ -40,7 +35,6 @@ def vmware_linux_reset_snapshot(name, snapshot):
         return
     
     logging.info(f"Reset snapshot {name} - {snapshot}")
-
 
 def vmware_linux_start_vm(name):
     """Start VM for VMware on Linux
@@ -91,8 +85,14 @@ def vmware_linux_get_running_vms():
 
 def main():
     """
-    Main function
+    Main function to monitor VMs while running independent of the Flask app
     """
+
+    from app.models import Analysis
+    from config import Config
+    
+    config = Config() 
+
 
     # check host OS
     host_os = platform.system()
@@ -137,6 +137,7 @@ def main():
     while True:
         try:
             # get all analyses currently running
+            session.commit()
             analyses = session.query(Analysis).filter(Analysis.status == 1).all()
 
             # check if time since the date_updated time of the analysis is greater than the timeout time
@@ -144,12 +145,13 @@ def main():
                 # get current time
                 current_time = session.query(sqlalchemy.func.current_timestamp()).scalar()
                 current_time = current_time.replace(tzinfo=None)
-                time_diff = (current_time - analysis.date_updated).total_seconds()
+                last_updated = analysis.date_updated.replace(tzinfo=None)
+                time_diff = (current_time - last_updated).total_seconds()
                 # check if time difference is greater than timeout
-                logging.debug(f"Time difference for analysis {analysis.id}: {time_diff}")
+                logging.debug(f"Analysis: {analysis.id} Current time: {current_time}, last updated: {last_updated}, time difference: {time_diff}")
                 if time_diff > config.VM_TIMEOUT:
-                    # set status to 4 (error)
-                    analysis.status = 4
+                    # set status to 3 (error)
+                    analysis.status = 3
                     analysis.error_message = "analysis VM timeout"
                     session.add(analysis)
                     session.commit()
@@ -162,6 +164,13 @@ def main():
                             break
                     reset_snapshot(analysis.analysis_vm, snapshot)
                     
+                    # wait until VM is ready
+                    running_vms = get_running_vms()
+                    while analysis.analysis_vm in running_vms:
+                        logging.debug(f"Waiting for VM {analysis.analysis_vm} to reset")
+                        time.sleep(1)
+                        running_vms = get_running_vms()
+
                     # start VM
                     start_vm(analysis.analysis_vm)
 
