@@ -404,6 +404,9 @@ def main():
     while not os.path.isfile('procmon_report.pml'):
         time.sleep(1)
     
+    # wait for procmon to finish writing to file
+    time.sleep(5)
+
     # save procmon report as csv and collect events
     cmd = shlex.split(f'./procmon/Procmon.exe /AcceptEula /Quiet /Minimized /OpenLog procmon_report.pml /SaveAs procmon_report.csv')
     result = subprocess.run(cmd)
