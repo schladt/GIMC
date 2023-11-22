@@ -61,16 +61,10 @@ def main():
 
         # step 2: run the prompt through the LLM
         system_prompt = f""" 
-<<<<<<< HEAD
-            You are an experienced programmer. 
-            Only return code in the {language} programming language. Do not any text outside of the code block.
-            Please comment thoroughly comment your code.
-=======
             You are a computer programmer. 
             Only return code in the {language} programming language. Do not include any text outside of the code block.
             All code will be compiled and run on a Windows operating system using the gcc compiler.
             Do not use d_type anywhere in your code as 'struct dirent' has no member named 'd_type' in Windows.
->>>>>>> d310bcb78b35e132d4b4f2de5ed5b07d0c10c19d
             One or more functions along with required imports and global variables should be returned depending on the user input. 
             """
         system_prompt = " ".join(system_prompt.split())
