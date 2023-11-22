@@ -61,6 +61,7 @@ def main():
         system_prompt = f""" 
             You are an experienced programmer. 
             Only return code in the {language} programming language. Do not any text outside of the code block.
+            Please comment thoroughly comment your code.
             One or more functions along with required imports and global variables should be returned depending on the user input. 
             The function should be named with the user provided name. 
             The function should accept the user provided inputs. 
