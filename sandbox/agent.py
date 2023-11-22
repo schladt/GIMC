@@ -152,167 +152,197 @@ def get_static_analysis(filepath):
         static_analysis['hashes'][hash_type] = hasher.hexdigest()
 
     # PE seection information
-    static_analysis['sections'] = []
-    for section in pe.sections:
-        name = section.Name.decode('utf-8').rstrip('\x00')
-        static_analysis['sections'].append({
-            'name': name,
-            'virtual_address': hex(section.VirtualAddress),
-            'virtual_size': hex(section.Misc_VirtualSize),
-            'size_of_raw_data': section.SizeOfRawData
-        })
+    try:
+        static_analysis['sections'] = []
+        for section in pe.sections:
+            name = section.Name.decode('utf-8').rstrip('\x00')
+            static_analysis['sections'].append({
+                'name': name,
+                'virtual_address': hex(section.VirtualAddress),
+                'virtual_size': hex(section.Misc_VirtualSize),
+                'size_of_raw_data': section.SizeOfRawData
+            })
+    except:
+        pass
 
     # PE imports
-    static_analysis['imports'] = []
-    for entry in pe.DIRECTORY_ENTRY_IMPORT:
-        static_analysis['imports'].append({
-            'dll': entry.dll.decode('utf-8'),
-            'imports': [imported.name.decode('utf-8') for imported in entry.imports]
-        })
+    try:
+        static_analysis['imports'] = []
+        for entry in pe.DIRECTORY_ENTRY_IMPORT:
+            static_analysis['imports'].append({
+                'dll': entry.dll.decode('utf-8'),
+                'imports': [imported.name.decode('utf-8') for imported in entry.imports]
+            })
+    except:
+        pass
 
     # PE exports
-    static_analysis['exports'] = []
-    if hasattr(pe, 'DIRECTORY_ENTRY_EXPORT'):
-        for exported in pe.DIRECTORY_ENTRY_EXPORT.symbols:
-            static_analysis['exports'].append({
-                'name': exported.name.decode('utf-8'),
-                'address': hex(pe.OPTIONAL_HEADER.ImageBase + exported.address),
-                'ordinal': exported.ordinal
-            })
+    try:
+        static_analysis['exports'] = []
+        if hasattr(pe, 'DIRECTORY_ENTRY_EXPORT'):
+            for exported in pe.DIRECTORY_ENTRY_EXPORT.symbols:
+                static_analysis['exports'].append({
+                    'name': exported.name.decode('utf-8'),
+                    'address': hex(pe.OPTIONAL_HEADER.ImageBase + exported.address),
+                    'ordinal': exported.ordinal
+                })
+    except:
+        pass
 
     # PE resources
-    static_analysis['resources'] = []
-    if hasattr(pe, 'DIRECTORY_ENTRY_RESOURCE'):
-        for resource_type in pe.DIRECTORY_ENTRY_RESOURCE.entries:
-            static_analysis['resources'].append(resource_type.struct.dump_dict())
+    try:
+        static_analysis['resources'] = []
+        if hasattr(pe, 'DIRECTORY_ENTRY_RESOURCE'):
+            for resource_type in pe.DIRECTORY_ENTRY_RESOURCE.entries:
+                static_analysis['resources'].append(resource_type.struct.dump_dict())
+    except:
+        pass
 
     # PE debug
-    static_analysis['debug'] = []
-    if hasattr(pe, 'DIRECTORY_ENTRY_DEBUG'):
-        for debug in pe.DIRECTORY_ENTRY_DEBUG:
-            static_analysis['debug'].append({
-                'type': debug.struct.Type,
-                'size_of_data': debug.struct.SizeOfData,
-                'address_of_raw_data': hex(debug.struct.AddressOfRawData),
-                'pointer_to_raw_data': hex(debug.struct.PointerToRawData)
-            })
+    try:
+        static_analysis['debug'] = []
+        if hasattr(pe, 'DIRECTORY_ENTRY_DEBUG'):
+            for debug in pe.DIRECTORY_ENTRY_DEBUG:
+                static_analysis['debug'].append({
+                    'type': debug.struct.Type,
+                    'size_of_data': debug.struct.SizeOfData,
+                    'address_of_raw_data': hex(debug.struct.AddressOfRawData),
+                    'pointer_to_raw_data': hex(debug.struct.PointerToRawData)
+                })
+    except:
+        pass
 
     # PE load configuration
-    static_analysis['load_configuration'] = []
-    if hasattr(pe, 'DIRECTORY_ENTRY_LOAD_CONFIG'):
-        static_analysis['load_configuration'].append({
-            'size': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.Size,
-            'time_date_stamp': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.TimeDateStamp,
-            'major_version': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.MajorVersion,
-            'minor_version': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.MinorVersion,
-            'global_flags_clear': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.GlobalFlagsClear,
-            'global_flags_set': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.GlobalFlagsSet,
-            'critical_section_default_timeout': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.CriticalSectionDefaultTimeout,
-            'decommit_free_block_threshold': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.DeCommitFreeBlockThreshold,
-            'decommit_total_free_threshold': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.DeCommitTotalFreeThreshold,
-            'lock_prefix_table': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.LockPrefixTable,
-            'maximum_allocation_size': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.MaximumAllocationSize,
-            'virtual_memory_threshold': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.VirtualMemoryThreshold,
-            'process_affinity_mask': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.ProcessAffinityMask,
-            'process_heap_flags': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.ProcessHeapFlags,
-            'service_pack_version': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.ServicePackVersion,
-            'reserved1': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.Reserved1,
-            'edit_list': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.EditList,
-            'security_cookie': hex(pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SecurityCookie),
-            'se_handler_table': hex(pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerTable),
-            'se_handler_count': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerCount
-        })
+    try:
+        static_analysis['load_configuration'] = []
+        if hasattr(pe, 'DIRECTORY_ENTRY_LOAD_CONFIG'):
+            static_analysis['load_configuration'].append({
+                'size': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.Size,
+                'time_date_stamp': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.TimeDateStamp,
+                'major_version': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.MajorVersion,
+                'minor_version': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.MinorVersion,
+                'global_flags_clear': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.GlobalFlagsClear,
+                'global_flags_set': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.GlobalFlagsSet,
+                'critical_section_default_timeout': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.CriticalSectionDefaultTimeout,
+                'decommit_free_block_threshold': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.DeCommitFreeBlockThreshold,
+                'decommit_total_free_threshold': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.DeCommitTotalFreeThreshold,
+                'lock_prefix_table': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.LockPrefixTable,
+                'maximum_allocation_size': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.MaximumAllocationSize,
+                'virtual_memory_threshold': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.VirtualMemoryThreshold,
+                'process_affinity_mask': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.ProcessAffinityMask,
+                'process_heap_flags': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.ProcessHeapFlags,
+                'service_pack_version': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.ServicePackVersion,
+                'reserved1': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.Reserved1,
+                'edit_list': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.EditList,
+                'security_cookie': hex(pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SecurityCookie),
+                'se_handler_table': hex(pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerTable),
+                'se_handler_count': pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerCount
+            })
+    except:
+        pass
 
     # PE bound import
-    static_analysis['bound_imports'] = []
-    if hasattr(pe, 'DIRECTORY_ENTRY_BOUND_IMPORT'):
-        for bound_import in pe.DIRECTORY_ENTRY_BOUND_IMPORT:
-            static_analysis['bound_imports'].append({
-                'name': bound_import.name.decode('utf-8'),
-                'entries': []
-            })
-            for entry in bound_import.entries:
-                static_analysis['bound_imports'][-1]['entries'].append({
-                    'name': entry.name.decode('utf-8'),
-                    'address': hex(entry.address)
+    try:
+        static_analysis['bound_imports'] = []
+        if hasattr(pe, 'DIRECTORY_ENTRY_BOUND_IMPORT'):
+            for bound_import in pe.DIRECTORY_ENTRY_BOUND_IMPORT:
+                static_analysis['bound_imports'].append({
+                    'name': bound_import.name.decode('utf-8'),
+                    'entries': []
                 })
+                for entry in bound_import.entries:
+                    static_analysis['bound_imports'][-1]['entries'].append({
+                        'name': entry.name.decode('utf-8'),
+                        'address': hex(entry.address)
+                    })
+    except:
+        pass
 
     # header information
-    raw_data = pe.dump_dict()
-    file_header = raw_data['FILE_HEADER']
-    dos_header = raw_data['DOS_HEADER']
-    nt_headers = raw_data['NT_HEADERS']
-    optional_header = raw_data['OPTIONAL_HEADER']
-    flags = raw_data['Flags']
+    try:
+        raw_data = pe.dump_dict()
+        file_header = raw_data['FILE_HEADER']
+        dos_header = raw_data['DOS_HEADER']
+        nt_headers = raw_data['NT_HEADERS']
+        optional_header = raw_data['OPTIONAL_HEADER']
+        flags = raw_data['Flags']
 
-    # the following parses FILE_HEADER, DOS_HEADER, NT_HEADERS, OPTIONAL_HEADER
-    static_analysis['file_header'] = {}
-    for key in file_header.keys():
-        value = file_header[key]
-        if type(value) == dict:
-            static_analysis['file_header'][key] = value['Value']
-        else:
-            static_analysis['file_header'][key] = value
+        # the following parses FILE_HEADER, DOS_HEADER, NT_HEADERS, OPTIONAL_HEADER
+        static_analysis['file_header'] = {}
+        for key in file_header.keys():
+            value = file_header[key]
+            if type(value) == dict:
+                static_analysis['file_header'][key] = value['Value']
+            else:
+                static_analysis['file_header'][key] = value
 
-    static_analysis['dos_header'] = {}
-    for key in dos_header.keys():
-        value = dos_header[key]
-        if type(value) == dict:
-            static_analysis['dos_header'][key] = value['Value']
-        else:
-            static_analysis['dos_header'][key] = value
+        static_analysis['dos_header'] = {}
+        for key in dos_header.keys():
+            value = dos_header[key]
+            if type(value) == dict:
+                static_analysis['dos_header'][key] = value['Value']
+            else:
+                static_analysis['dos_header'][key] = value
 
-    static_analysis['nt_headers'] = {}
-    for key in nt_headers.keys():
-        value = nt_headers[key]
-        if type(value) == dict:
-            static_analysis['nt_headers'][key] = value['Value']
-        else:
-            static_analysis['nt_headers'][key] = value
+        static_analysis['nt_headers'] = {}
+        for key in nt_headers.keys():
+            value = nt_headers[key]
+            if type(value) == dict:
+                static_analysis['nt_headers'][key] = value['Value']
+            else:
+                static_analysis['nt_headers'][key] = value
 
-    static_analysis['optional_header'] = {}
-    for key in optional_header.keys():
-        value = optional_header[key]
-        if type(value) == dict:
-            static_analysis['optional_header'][key] = value['Value']
-        else:
-            static_analysis['optional_header'][key] = value
+        static_analysis['optional_header'] = {}
+        for key in optional_header.keys():
+            value = optional_header[key]
+            if type(value) == dict:
+                static_analysis['optional_header'][key] = value['Value']
+            else:
+                static_analysis['optional_header'][key] = value
 
-    static_analysis['flags'] = flags
+        static_analysis['flags'] = flags
+    except:
+        pass
 
     # get strings
-    static_analysis['strings'] = {}
-    with open(filepath, "rb") as i:
-        data = i.read()
-        for (string, str_type, span, is_interesting) in b2s.extract_all_strings(data):
-            if str_type not in static_analysis['strings']:
-                static_analysis['strings'][str_type] = []
-            static_analysis['strings'][str_type].append(string)
-
+    try:
+        static_analysis['strings'] = {}
+        with open(filepath, "rb") as i:
+            data = i.read()
+            for (string, str_type, span, is_interesting) in b2s.extract_all_strings(data):
+                if str_type not in static_analysis['strings']:
+                    static_analysis['strings'][str_type] = []
+                static_analysis['strings'][str_type].append(string)
+    except:
+        pass
+    
     # perform disassembly for op code count
-    static_analysis['opcodes'] = {}
-    pe = pefile.PE(filepath)
+    try:
+        static_analysis['opcodes'] = {}
+        pe = pefile.PE(filepath)
 
-    # Determine architecture (32-bit or 64-bit)
-    if pe.FILE_HEADER.Machine == pefile.MACHINE_TYPE['IMAGE_FILE_MACHINE_I386']:
-        mode = CS_MODE_32
-    elif pe.FILE_HEADER.Machine == pefile.MACHINE_TYPE['IMAGE_FILE_MACHINE_AMD64']:
-        mode = CS_MODE_64
-    else:
-        logging.error("Unsupported architecture!")
-        return None
+        # Determine architecture (32-bit or 64-bit)
+        if pe.FILE_HEADER.Machine == pefile.MACHINE_TYPE['IMAGE_FILE_MACHINE_I386']:
+            mode = CS_MODE_32
+        elif pe.FILE_HEADER.Machine == pefile.MACHINE_TYPE['IMAGE_FILE_MACHINE_AMD64']:
+            mode = CS_MODE_64
+        else:
+            logging.error("Unsupported architecture!")
+            return None
 
-    # Initialize capstone disassembler for x86/64
-    md = Cs(CS_ARCH_X86, mode)
+        # Initialize capstone disassembler for x86/64
+        md = Cs(CS_ARCH_X86, mode)
 
-    for section in pe.sections:
-        # Check if this section has executable code
-        if section.IMAGE_SCN_MEM_EXECUTE:
-            code = section.get_data()
-            for i in md.disasm(code, section.VirtualAddress):
-                if i.mnemonic not in static_analysis['opcodes']:
-                    static_analysis['opcodes'][i.mnemonic] = 0
-                static_analysis['opcodes'][i.mnemonic] += 1
+        for section in pe.sections:
+            # Check if this section has executable code
+            if section.IMAGE_SCN_MEM_EXECUTE:
+                code = section.get_data()
+                for i in md.disasm(code, section.VirtualAddress):
+                    if i.mnemonic not in static_analysis['opcodes']:
+                        static_analysis['opcodes'][i.mnemonic] = 0
+                    static_analysis['opcodes'][i.mnemonic] += 1
+    except:
+        pass
 
     return static_analysis
 
@@ -331,25 +361,28 @@ def main():
     passphrase = args.passphrase
 
     while True:
-        url = urljoin(args.server, 'vm/checkin')
+        try:
+            url = urljoin(args.server, 'vm/checkin')
 
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': f'Bearer {passphrase}'
-        }   
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {passphrase}'
+            }   
 
-        r = requests.get(url, headers=headers)
-        
-        # check if sample attached by looking at headers
-        if 'X-Message' in r.headers and r.headers['X-Message'] == 'sample attached':
-            break
-        
-        if r.status_code != 200:
-            logging.error(f'Error checking in with server: {r.status_code} - {r.json()}')
-        else:
-            logging.info(r.json()['message'])
-
+            r = requests.get(url, headers=headers)
+            
+            # check if sample attached by looking at headers
+            if 'X-Message' in r.headers and r.headers['X-Message'] == 'sample attached':
+                break
+            
+            if r.status_code != 200:
+                logging.error(f'Error checking in with server: {r.status_code} - {r.json()}')
+            else:
+                logging.info(r.json()['message'])
+        except Exception as e:
+            logging.error(f'Error checking in with server: {e}')
+            
         time.sleep(5)
     
     logging.info('received sample from server...')
@@ -401,6 +434,9 @@ def main():
     while not os.path.isfile('procmon_report.pml'):
         time.sleep(1)
     
+    # wait for procmon to finish writing to file
+    time.sleep(5)
+
     # save procmon report as csv and collect events
     cmd = shlex.split(f'./procmon/Procmon.exe /AcceptEula /Quiet /Minimized /OpenLog procmon_report.pml /SaveAs procmon_report.csv')
     result = subprocess.run(cmd)

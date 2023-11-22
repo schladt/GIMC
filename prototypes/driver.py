@@ -6,16 +6,16 @@ import subprocess
 import json
 import importlib.util
 import openai
-import sqlite3
 import hashlib
 import logging
+import sqlalchemy
+
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text, ForeignKey
 
 # set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
 SETTINGS_PATH = "..\\settings.json"
-DB_NAME = "prototypes.db"
 
 def main():
 
@@ -30,12 +30,14 @@ def main():
 
     # setup database
     logging.debug("Setting up database")
-    db_path = os.path.join(settings["data_path"], DB_NAME)
-    setup_db(db_path)
+    db_connection_str = settings['sqlalchemy_database_uri']
+    setup_db(db_connection_str)
 
-    # open database connection
-    db = sqlite3.connect(db_path)
-    cursor = db.cursor()
+    # open database connection using sqlalchemy
+    engine = sqlalchemy.create_engine(db_connection_str)
+    metadata_obj = MetaData()
+    conn = engine.connect()
+    prototypes = Table('prototypes', metadata_obj, autoload_with=engine)
 
     # get directory of this file
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -59,21 +61,24 @@ def main():
 
         # step 2: run the prompt through the LLM
         system_prompt = f""" 
+<<<<<<< HEAD
             You are an experienced programmer. 
             Only return code in the {language} programming language. Do not any text outside of the code block.
             Please comment thoroughly comment your code.
+=======
+            You are a computer programmer. 
+            Only return code in the {language} programming language. Do not include any text outside of the code block.
+            All code will be compiled and run on a Windows operating system using the gcc compiler.
+            Do not use d_type anywhere in your code as 'struct dirent' has no member named 'd_type' in Windows.
+>>>>>>> d310bcb78b35e132d4b4f2de5ed5b07d0c10c19d
             One or more functions along with required imports and global variables should be returned depending on the user input. 
-            The function should be named with the user provided name. 
-            The function should accept the user provided inputs. 
-            The function should return the user provided outputs.
-            The function should also perform additional user defined tasks.    
             """
         system_prompt = " ".join(system_prompt.split())
       
         logging.info("Running prompt through LLM")
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            n = 5,
+            model="gpt-3.5-turbo-16k",
+            n = 20,
             messages=[
                 { "role": "system", "content": system_prompt },
                 {"role": "user", "content": user_prompt}
@@ -93,22 +98,12 @@ def main():
 
             # find the sha256 hash of the content
             hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+                       
+            # insert into database using sqlalchemy
+            query = prototypes.insert().values(hash=hash, name=code_name, prompt=user_prompt, language=language, code=content, status=0, num_errors=0)
+            conn.execute(query)
+            conn.commit()
             
-            # insert into database
-            query = """ INSERT INTO prototypes (
-                    hash, 
-                    name, 
-                    prompt, 
-                    language, 
-                    code, 
-                    status,
-                    num_errors) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-            """
-            cursor.execute(query, (hash, code_name, user_prompt, language, content, 0, 0))
-
-            # commit changes
-            db.commit()
 
             # step 4: write the code to a file and compile it using subprocess popen
             with open("proto.c", "w") as f:
@@ -125,9 +120,10 @@ def main():
                 logging.error(err)
 
                 # update database with error code (1)
-                query = """ UPDATE prototypes SET status = ? WHERE hash = ? """
-                cursor.execute(query, (1, hash))
-                db.commit()
+                query = prototypes.update().where(prototypes.c.hash==hash).values(status=1)
+                conn.execute(query)
+                conn.commit()
+
                 continue
 
             # step 5: run the unit tests
@@ -139,6 +135,10 @@ def main():
             if p.returncode != 0:
                 logging.error(f"Error in unit test {file} - {hash}")
                 logging.error(out)
+                # update database with error code (1)
+                query = prototypes.update().where(prototypes.c.hash==hash).values(status=1)
+                conn.execute(query)
+                conn.commit()
                 continue
 
             # Decode output as json
@@ -148,7 +148,11 @@ def main():
                 num_errors = out["num_errors"]
                 num_tests = out["num_tests"]
             except:
-                logging.info(f"Error decoding json in unit test {file} - {hash}")
+                logging.error(f"Error decoding json in unit test {file} - {hash}")
+                # update database with error code (1)
+                query = prototypes.update().where(prototypes.c.hash==hash).values(status=1)
+                conn.execute(query)
+                conn.commit()
                 continue
 
             # log output
@@ -157,37 +161,43 @@ def main():
             logging.info("num_tests: {}".format(num_tests))
 
             # step 6: update the database with the number of failures and errors
-            query = """ UPDATE prototypes SET num_errors = ?, status = ? WHERE hash = ? """
-            cursor.execute(query, (num_errors, 2 if num_errors > 0 else 3, hash))
-            db.commit()
+            total_errors = num_failures + num_errors
+            query = prototypes.update().where(prototypes.c.hash==hash).values(num_errors=total_errors, status=2 if total_errors > 0 else 3)
+            conn.execute(query)
+            conn.commit()
+           
     # close database connection
-    db.close()
+    conn.close()
+    engine.dispose()
 
-def setup_db(db_name = DB_NAME):
+def setup_db(db_connection_str):
     """
     Creates the database if it does not exist
     """
-    # open database connection
-    db = sqlite3.connect(db_name)
-    cursor = db.cursor()
+    # open database connection using sqlalchemy
+    engine = sqlalchemy.create_engine(db_connection_str)
+    # Create the Metadata Object 
+    metadata_obj = MetaData() 
+    
+    # Define the profile table 
+    
+    # database name 
+    prototypes = Table( 
+        'prototypes',                                         
+        metadata_obj,                                     
+        Column('hash', String, primary_key=True),   
+        Column('name', String),
+        Column('prompt', Text),
+        Column('language', String),
+        Column('code', Text),
+        Column('status', Integer),
+        Column('num_errors', Integer),               
+    ) 
+  
+    # Create the profile table 
+    metadata_obj.create_all(engine) 
 
-    # create table if it does not exist
-    query = """
-        CREATE TABLE IF NOT EXISTS prototypes (
-            hash TEXT,
-            name TEXT,
-            prompt TEXT,
-            language TEXT,
-            code TEXT, 
-            status INT,
-            num_errors INT, 
-            PRIMARY KEY (hash)
-        )"""
-    cursor.execute(query)
-
-    # commit changes and close connection
-    db.commit()
-    db.close()
+    engine.dispose()
 
 def import_var_from_module(path, var):
     """

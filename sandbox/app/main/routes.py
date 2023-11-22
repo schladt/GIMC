@@ -2,6 +2,8 @@ import os
 import hashlib
 import datetime
 import json
+import time
+import threading
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -12,7 +14,8 @@ from cryptography.hazmat.primitives import padding as sym_padding
 from flask import request, jsonify, current_app, url_for, redirect, send_file, make_response
 from app.main import bp
 from app import db, auth
-from app.models import Sample, Analysis
+from app.models import Sample, Analysis, Tag
+from utils.monitor import vmware_linux_get_running_vms, vmware_linux_reset_snapshot, vmware_linux_start_vm
 
 import logging
 # set up logging
@@ -159,6 +162,32 @@ def submit_sample():
     db.session.add(sample)
     db.session.commit()
 
+    # check if tags were submitted
+    if 'tags' in request.form:
+        try:
+            # get tags from request
+            tags = request.form['tags']
+            tags = tags.split(',')
+            tags = [tag.strip() for tag in tags]
+
+            # add tags to sample
+            for tag in tags:
+                # split on =
+                key, value = tag.split('=')
+
+                # check if tag exists
+                tag_obj = db.session.query(Tag).filter_by(key=key, value=value).first()
+                if not tag_obj:
+                    tag_obj = Tag(key=key, value=value)
+                    db.session.add(tag_obj)
+                    db.session.commit()
+                # check if tag is already associated with sample
+                if tag_obj not in sample.tags:
+                    sample.tags.append(tag_obj)
+        except Exception as e:
+            logging.info(f"error adding tags to sample: {e}")
+            return {f'"error": "error adding tags to sample: {e}'}, 400
+
     # check if user requested to submit sample for analysis
     if 'analyze' in request.form and request.form['analyze'] == 'true':
         # call submit analysis endpoint
@@ -184,7 +213,10 @@ def vm_checkin():
             vm_name = vm['name']
 
     if not vm_name:
+        logging.error("requesting IP address not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
+
+    logging.info(f"VM {vm_name} checking in")
 
     # check if analysis tasks are available
     analysis = Analysis.query.filter_by(status=0).first()
@@ -204,12 +236,14 @@ def vm_checkin():
         analysis.status = 3
         analysis.error_message = "sample not found"
         db.session.commit()
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+        logging.error("sample not found for analysis task {analysis.id}")
         return {"error": "sample not found"}, 404
     
     # send file to VM WITHOUT decrypting
     response = make_response(send_file(sample.filepath, as_attachment=True, download_name=analysis.sample))
     response.headers['X-Message'] = "sample attached"
+    logging.info(f"VM {vm_name} received analysis task {analysis.id} for sample {analysis.sample}")
     return response
 
 @bp.route('/vm/submit/report', methods=['POST'])
@@ -227,24 +261,27 @@ def vm_submit_static():
             vm_name = vm['name']
 
     if not vm_name:
+        logging.error(f"requesting IP address {ip} not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
     
     # get analysis from database based on VM name and status
     analysis = Analysis.query.filter_by(analysis_vm=vm_name, status=1).first()
     if not analysis:
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+        logging.error("no analysis task matching vm assignment")
         return {"error": "no analysis tasks available"}, 400
     
     # get report from request
     try:
         report = request.get_json()
     except Exception as e:
-        logging.info(f"error getting report from request: {e}")
+        logging.error(f"error getting report from request: {e}")
         report = None
     if not report:
         analysis.status = 3
         db.session.commit()
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+        logging.error("no report in request")
         return {"error": "no report in request"}, 400
     
     # save report to file
@@ -252,9 +289,9 @@ def vm_submit_static():
         with open(analysis.report, 'w') as outfile:
             json.dump(report, outfile, indent=4)
     except Exception as e:
-        logging.info(f"error saving report to file: {e}")
+        logging.error(f"error saving report to file: {e}")
         analysis.status = 3
-        revert_vm(vm_name)
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
         return {"error": "error saving report to file"}, 400
 
     # update analysis status
@@ -262,8 +299,8 @@ def vm_submit_static():
     db.session.commit()
 
     # revert VM to snapshot
-    revert_vm(vm_name)
-
+    threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+    logging.info(f"VM {vm_name} successfully submitted report for analysis task {analysis.id} for sample {analysis.sample}")
     return {"message": "report successfully uploaded"}, 200
 
 @bp.route('/vm/submit/error', methods=['POST'])
@@ -308,10 +345,46 @@ def vm_submit_error():
         db.session.commit()
 
     # revert VM to snapshot and return
-    revert_vm(vm_name)
+    threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
     return {"message": "error message successfully uploaded"}, 200
 
-def revert_vm(vm_name):
+def revert_vm(vm_name, config):
     """ Revert VM to snapshot """
-    logging.info(f"reverting VM: {vm_name} to snapshot (NOT IMPLEMENTED YET)")
+
+    # read config file for VM provider
+    vm_provider = config['VM_PROVIDER']
+
+    if vm_provider == 'vmware':
+        reset_snapshot = vmware_linux_reset_snapshot
+        start_vm = vmware_linux_start_vm
+        get_running_vms = vmware_linux_get_running_vms
+    else:
+        logging.error(f"unknown VM provider: {vm_provider}")
+        return
+
+    # get snapshot name from configuration file
+    snapshot = None
+    for vm in config['VMS']:
+        if vm['name'] == vm_name:
+            snapshot = vm['snapshot']
+            break
+    if not snapshot:
+        logging.error(f"snapshot name not found for VM: {vm_name}")
+        return
+
+    # revert VM to snapshot
+    if not reset_snapshot(vm_name, snapshot):
+        logging.error(f"error reverting VM: {vm_name} to snapshot: {snapshot}")
+        return
+
+    # wait until VM is ready
+    running_vms = get_running_vms()
+    while vm_name in running_vms:
+        time.sleep(1)
+        running_vms = get_running_vms()
+
+    # start VM
+    start_vm(vm_name)
+
+    logging.info(f"reverted VM: {vm_name} to snapshot {snapshot}")
     return

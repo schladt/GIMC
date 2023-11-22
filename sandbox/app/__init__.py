@@ -19,4 +19,12 @@ def create_app(config_class=Config):
 
     app.logger.setLevel(logging.INFO)
 
+    # reset status of previously running analyses
+    with app.app_context():
+        from app.models import Analysis
+        analyses = Analysis.query.filter(Analysis.status == 1).all()
+        for analysis in analyses:
+            analysis.status = 0
+        db.session.commit()
+
     return app
