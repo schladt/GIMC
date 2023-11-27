@@ -243,12 +243,14 @@ def vm_checkin():
     # send file to VM WITHOUT decrypting
     response = make_response(send_file(sample.filepath, as_attachment=True, download_name=analysis.sample))
     response.headers['X-Message'] = "sample attached"
+    response.headers['X-Sample-SHA256'] = analysis.sample
+    response.headers['X-Analysis-ID'] = analysis.id
     logging.info(f"VM {vm_name} received analysis task {analysis.id} for sample {analysis.sample}")
     return response
 
 @bp.route('/vm/submit/report', methods=['POST'])
 @auth.login_required
-def vm_submit_static():
+def vm_submit_report():
     """ Endpoint for VMs to submit analysis report """
 
     # get IP address of VM
@@ -264,13 +266,30 @@ def vm_submit_static():
         logging.error(f"requesting IP address {ip} not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
     
-    # get analysis from database based on VM name and status
-    analysis = Analysis.query.filter_by(analysis_vm=vm_name, status=1).first()
+    # get analysis from database based on analysis id
+    if 'X-Analysis-ID' not in request.headers:
+        logging.error("no analysis ID in request")
+        return {"error": "no analysis ID in request"}, 400
+    
+    if 'X-Sample-SHA256' not in request.headers:
+        logging.error("no sample SHA256 in request")
+        return {"error": "no sample SHA256 in request"}, 400
+
+    analysis_id = request.headers['X-Analysis-ID']
+    analysis = Analysis.query.filter_by(id=analysis_id).first()
     if not analysis:
         threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
-        logging.error("no analysis task matching vm assignment")
-        return {"error": "no analysis tasks available"}, 400
-    
+        err_msg = f"no analysis task matching {analysis_id} found"
+        logging.error(err_msg)
+        return {"error": err_msg}, 400
+
+    # make sure analysis hash matches sample hash
+    if analysis.sample != request.headers['X-Sample-SHA256']:
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+        err_msg = f"analysis task {analysis_id} does not match sample {request.headers['X-Sample-SHA256']}"
+        logging.error(err_msg)
+        return {"error": err_msg}, 400
+
     # get report from request
     try:
         report = request.get_json()
@@ -291,6 +310,7 @@ def vm_submit_static():
     except Exception as e:
         logging.error(f"error saving report to file: {e}")
         analysis.status = 3
+        db.session.commit()
         threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
         return {"error": "error saving report to file"}, 400
 
@@ -321,12 +341,28 @@ def vm_submit_error():
         logging.info("requesting IP address not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
     
+    if 'X-Analysis-ID' not in request.headers:
+        logging.info("no analysis ID in request")
+        return {"error": "no analysis ID in request"}, 400
+
+    if 'X-Sample-SHA256' not in request.headers:
+        logging.info("no sample SHA256 in request")
+        return {"error": "no sample SHA256 in request"}, 400
+
     # get analysis from database based on VM name
-    analysis = Analysis.query.filter_by(analysis_vm=vm_name).first()
+    analysis_id = request.headers['X-Analysis-ID']
+    analysis = Analysis.query.filter_by(id=analysis_id).first()
     if not analysis:
         logging.info("no analysis tasks available")
         return {"error": "no analysis tasks available"}, 400
     
+    # make sure analysis hash matches sample hash
+    if analysis.sample != request.headers['X-Sample-SHA256']:
+        threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+        err_msg = f"analysis task {analysis_id} does not match sample {request.headers['X-Sample-SHA256']}"
+        logging.error(err_msg)
+        return {"error": err_msg}, 400
+
     # get error message from request
     try: 
         error_data = request.get_json()
