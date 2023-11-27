@@ -338,23 +338,24 @@ def vm_submit_error():
             vm_name = vm['name']
 
     if not vm_name:
-        logging.info("requesting IP address not registered in configuration file")
+        logging.error("requesting IP address not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
     
     if 'X-Analysis-ID' not in request.headers:
-        logging.info("no analysis ID in request")
+        logging.error("no analysis ID in request")
         return {"error": "no analysis ID in request"}, 400
 
     if 'X-Sample-SHA256' not in request.headers:
-        logging.info("no sample SHA256 in request")
+        logging.error("no sample SHA256 in request")
         return {"error": "no sample SHA256 in request"}, 400
 
     # get analysis from database based on VM name
     analysis_id = request.headers['X-Analysis-ID']
     analysis = Analysis.query.filter_by(id=analysis_id).first()
     if not analysis:
-        logging.info("no analysis tasks available")
-        return {"error": "no analysis tasks available"}, 400
+        err_msg = f"no analysis task matching {analysis_id} found"
+        logging.error(err_msg)
+        return {"error": err_msg}, 400
     
     # make sure analysis hash matches sample hash
     if analysis.sample != request.headers['X-Sample-SHA256']:
@@ -373,7 +374,7 @@ def vm_submit_error():
     except Exception as e:
         logging.info(f"error getting error message from request: {e}")
         error_message = "error getting error message from request"
-    
+
     # update analysis status
     if analysis:
         analysis.status = 3
@@ -382,6 +383,7 @@ def vm_submit_error():
 
     # revert VM to snapshot and return
     threading.Thread(target=revert_vm, args=(vm_name,current_app.config)).start()
+    logging.error(f"VM {vm_name} failed analysis task {analysis.id} for sample {analysis.sample}: {error_message}")
     return {"message": "error message successfully uploaded"}, 200
 
 def revert_vm(vm_name, config):
