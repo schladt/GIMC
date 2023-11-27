@@ -371,7 +371,7 @@ def main():
             }   
 
             r = requests.get(url, headers=headers)
-            
+
             # check if sample attached by looking at headers
             if 'X-Message' in r.headers and r.headers['X-Message'] == 'sample attached':
                 break
@@ -385,7 +385,20 @@ def main():
             
         time.sleep(5)
     
-    logging.info('received sample from server...')
+    # check for required headers
+    if 'X-Analysis-ID' not in r.headers:
+        error = 'No analysis ID found in analysis headers'
+        logging.error(error)
+        return
+
+    if 'X-Sample-SHA256' not in r.headers:
+        error = 'No hash in analysis headers'
+        logging.error(error)
+        return
+
+    analysis_id = r.headers['X-Analysis-ID']
+    sample_sha256 = r.headers['X-Sample-SHA256']
+    logging.info(f'received sample {sample_sha256} and analysis task {analysis_id} from server...')
     # decrypt sample
     content = decrypt_file(r.content, passphrase.encode('utf-8'))
 
@@ -393,14 +406,14 @@ def main():
     file_type = windows_file_type(content)
     if file_type is None:
         error = 'file is not a PE file'
-        report_error(error)
+        report_error(error, analysis_id, sample_sha256)
         return
     elif file_type == 'EXE':
         extension = '.exe'
     elif file_type == 'DLL':
         extension = '.dll'
         error = 'DLL files are not supported at this time'
-        report_error(error)
+        report_error(error, analysis_id, sample_sha256)
         return
 
     # write sample to file
@@ -413,6 +426,13 @@ def main():
 
     # perform static analysis on sample
     static_report = get_static_analysis(sample_filename)
+
+
+    # make sure hashes match 
+    if static_report['hashes']['sha256'] != sample_sha256:
+        error = f'sample hash {static_report["hashes"]["sha256"]} does not match analysis hash {sample_sha256}'
+        report_error(error, analysis_id, sample_sha256)
+        return
 
     logging.info('static analysis complete')
     logging.info('performing dynamic analysis...')
@@ -442,7 +462,7 @@ def main():
     result = subprocess.run(cmd)
     if result.returncode != 0:
         error = "failed to save procmon report as csv"
-        report_error(error)
+        report_error(error, analysis_id, sample_sha256)
         return
 
     dynamic_report = collect_events(target_process_name=sample_filename, csv_file='procmon_report.csv')
@@ -461,16 +481,30 @@ def main():
     headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': f'Bearer {passphrase}'
-    }   
-    r = requests.post(url, headers=headers, json=report)
+        'Authorization': f'Bearer {passphrase}',
+        'X-Analysis-ID': analysis_id,
+        'X-Sample-SHA256': sample_sha256
+    }
+
+    try_count = 0
+    while True:
+        try:
+            r = requests.post(url, headers=headers, json=report)
+            break
+        except Exception as e:
+            logging.error(f'Error submitting results to server: {e}')
+            try_count += 1
+            if try_count == 5:
+                return
+            time.sleep(5)
+            continue   
 
     if r.status_code != 200:
         logging.error(f'Error submitting results to server: {r.status_code} - {r.json()}')
     else:
         logging.info(r.json()['message'])
     
-def report_error(error):
+def report_error(error, analysis_id, sample_sha256):
     """Reports an error to the server.
     
     Args:
@@ -482,12 +516,27 @@ def report_error(error):
     headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': f'Bearer {passphrase}'
+        'Authorization': f'Bearer {passphrase}',
+        'X-Analysis-ID': analysis_id,
+        'X-Sample-SHA256': sample_sha256
     }
     error_data = {
         'error': str(error)
-    }   
-    r = requests.post(url, headers=headers, json=error_data)
+    }
+
+    try_count = 0
+    while True:
+        try:
+            r = requests.post(url, headers=headers, json=error_data)
+            break
+        except Exception as e:
+            logging.error(f'Error submitting error to server: {e}')
+            try_count += 1
+            if try_count == 5:
+                return
+            time.sleep(5)
+            continue   
+
     if r.status_code != 200:
         logging.error(f'Error submitting error to server: {r.status_code} - {r.text}')
     else:
