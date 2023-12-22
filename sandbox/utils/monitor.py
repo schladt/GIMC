@@ -80,7 +80,7 @@ def vmware_linux_get_running_vms():
     
     vms = out.decode("utf-8").split('\n')[1:]
     vms = [vm.strip() for vm in vms if vm.strip() != '']
-    logging.debug(f"Running VMs: {vms}")
+    # logging.debug(f"Running VMs: {vms}")
 
     return vms
 
