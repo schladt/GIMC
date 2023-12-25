@@ -56,7 +56,8 @@ def plot_training_loss(minibatch_loss_list, num_epochs, iter_per_epoch,
     if results_dir is not None:
         image_path = os.path.join(results_dir, 'plot_training_loss.pdf')
         plt.savefig(image_path)
-
+    else:
+        plt.show()
 
 def plot_accuracy(train_acc_list, valid_acc_list, results_dir):
     """Plot training and validation accuracy
@@ -84,3 +85,5 @@ def plot_accuracy(train_acc_list, valid_acc_list, results_dir):
         image_path = os.path.join(
             results_dir, 'plot_acc_training_validation.pdf')
         plt.savefig(image_path)
+    else:
+        plt.show()
