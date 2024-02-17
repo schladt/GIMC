@@ -18,7 +18,7 @@ file_search = None
 CODE_NAME = "file_search_dfs"
 LANGUAGE = "c"
 PROMPT = """
-Please write a C function named `file_search` that performs a depth-first search on a directory tree, starting from a root directory named 'root'. The function should identify all files with a .txt extension using the Windows API for directory operations and return their names (excluding paths) in a comma-separated string, without any trailing commas. The function should not take any arguments.
+Write a C function named `file_search` that performs a depth-first search on a directory tree, starting from a root directory named 'root'. The function should identify all files with a .txt extension using the Windows API for directory operations and return their names (excluding paths) in a comma-separated string, without any trailing commas. The function should not take any arguments.
 
 The output should be formatted as follows:
 - If there are .txt files found, return their names in a comma-separated string like this: "file1.txt,file2.txt,..."
