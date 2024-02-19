@@ -26,7 +26,7 @@ The output should be formatted as follows:
 
 You can assume that the root directory is hardcoded as 'root' in the code.
 
-Here's a template to get you started:
+Here's a template to follow for this request:
 
 ```c
 #include <stdio.h>
