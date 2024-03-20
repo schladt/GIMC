@@ -184,6 +184,7 @@ def setup_db(db_connection_str):
         Column('prompt', Text),
         Column('language', String),
         Column('code', Text),
+        Column('xml', Text),
         Column('status', Integer),
         Column('num_errors', Integer),               
     ) 
