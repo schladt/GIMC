@@ -119,6 +119,14 @@ def main():
         else:
             print(result.stdout)
 
+        # read the xml file
+        with open(prototype_xml, 'r') as f:
+            xml = f.read()
+
+        # update the prototype with the xml
+        query = Prototypes.update().where(Prototypes.c.hash == prototype.hash).values(xml=xml)
+        conn.execute(query)
+
         # parse the xml file
         tree = ET.parse(prototype_xml)
         root = tree.getroot()
@@ -133,8 +141,8 @@ def main():
             try:
                 conn.execute(query)
             except exc.IntegrityError as e:
-                # print(f"Failed to add {tag} at position {position} with depth {depth} to the database for prototype {prototype.hash}.")
-                conn.rollback()
+                print(f"Failed to add {tag} at position {position} with depth {depth} to the database for prototype {prototype.hash}.")
+                # conn.rollback()
             position += 1
         conn.commit()
 
