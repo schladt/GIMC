@@ -42,21 +42,30 @@ class Chromosome:
     """
     A class representing a chromosome
     """
-    def __init__(self, tag, position, prototype_hash, weight=1, parents = [], edits = []):
+    def __init__(self, tag, position, prototype_hash, depth, weight=1, parents = [], edits = []):
         self.tag = tag
         self.position = position
         self.parents = parents
         self.edits = edits
         self.prototype = prototype_hash
         self.weight = weight
+        self.depth = depth
 
     def __str__(self):
-        return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Weight: {self.weight}, Parents: {self.parents}, Edits: {self.edits}"
+        return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits: {self.edits}"
     
     def add_edit(self, edit):
         self.edits.append(edit)
     
-
+def find_depth(elem, depth=0):
+    """Find the depth of an element in the XML tree."""
+    # Base case: if the element has no children, return the current depth
+    if len(elem) == 0:
+        return depth
+    # Recursive case: return the maximum depth of the element's children
+    else:
+        return max(find_depth(child, depth + 1) for child in elem)
+    
 def build_genome(prototype_hash):
     """
     Build a genome from a prototype hash. Assuming that XML is stored in the database
@@ -117,7 +126,8 @@ def build_genome(prototype_hash):
             parents.append(idx_map[parent_map[current_element]])
             current_element = parent_map[current_element]
         tag = element.tag.split("}")[1]
-        chromosome = Chromosome(tag, position, prototype_hash, parents=parents)        
+        depth = find_depth(element)
+        chromosome = Chromosome(tag, position, prototype_hash, depth=depth, parents=parents)
         genome.append(chromosome)
         position += 1
 
