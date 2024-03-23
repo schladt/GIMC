@@ -4,7 +4,7 @@ Contains the chromosome class and functions for constructing a genome from an xm
 
 import os, json
 
-from sqlalchemy import create_engine, MetaData, Table, func, Column, Integer, String, Text, ForeignKey, UniqueConstraint, exc
+from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.orm import sessionmaker
 
 import xml.etree.ElementTree as ET
