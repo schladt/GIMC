@@ -34,7 +34,7 @@ class Edit:
 
     def __str__(self):
         if self.edit_type == 'replace' or self.edit_type == 'insert':
-            return f"Edit: {self.edit_type} with ingredient at position {self.prototype_position} in prototype {self.prototype_hash}"
+            return f"Edit: {self.edit_type} with position {self.prototype_position} in prototype {self.prototype_hash}"
         else:
             return f"Edit: {self.edit_type}"
         
@@ -42,20 +42,24 @@ class Chromosome:
     """
     A class representing a chromosome
     """
-    def __init__(self, tag, position, prototype_hash, depth, weight=1, parents = [], edits = []):
+    def __init__(self, tag, position, prototype_hash, depth, weight=1, parents = None, edits = None):
         self.tag = tag
         self.position = position
-        self.parents = parents
-        self.edits = edits
+        self.parents = parents if parents is not None else []
+        self.edits = edits if edits is not None else []
         self.prototype = prototype_hash
         self.weight = weight
         self.depth = depth
 
     def __str__(self):
-        return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits: {self.edits}"
-    
-    def add_edit(self, edit):
-        self.edits.append(edit)
+        if self.edits:
+            edit_str = "\n\t".join([edit.__str__() for edit in self.edits])
+            return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits:\n\t{edit_str}"
+        else:
+            return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits: None"
+
+        
+
     
 def find_depth(elem, depth=0):
     """Find the depth of an element in the XML tree."""
