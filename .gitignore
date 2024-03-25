@@ -38,3 +38,4 @@ sample_under_test
 root/
 reports.json
 gi/tmp/
+tmp_*
