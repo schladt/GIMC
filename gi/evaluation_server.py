@@ -10,10 +10,10 @@ import logging
 import subprocess
 import json
 import shutil
+import requests
 
 from flask import Flask, jsonify, request
-
-UNIT_TEST_FILE = os.path.join('unit_tests', 'file_search_test.py')
+from config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL
 
 # set up logging
 logging.basicConfig(
@@ -90,14 +90,80 @@ def submit():
         shutil.rmtree(tmp_dir)
         return jsonify({"message": "error decoding json from unit test output"}), 500
 
+    # if therea are no failures or errors, recompile and submit to sandbox
+    if num_failures == 0 and num_errors == 0:
+        # recompile the code
+        exefilepath = os.path.join(tmp_dir, 'proto.exe')
+        p = subprocess.Popen(['gcc.exe', '-o', exefilepath, filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        (out, err) = p.communicate()
+        if p.returncode != 0:
+            logging.error(f"Error recompiling code in ")
+            out = out.decode("utf-8")
+            err = err.decode("utf-8")
+            logging.error(out)
+            logging.error(err)
+            # remove the tmp dir using shutil
+            shutil.rmtree(tmp_dir)
+            return jsonify({
+                "message": "error recompiling code",
+                "unit_test_results": {
+                    "num_failures": num_failures,
+                    "num_errors": num_errors,
+                    "num_tests": num_tests
+                }   }), 200
+
+        # submit to sandbox
+        logging.info("Submitting to sandbox")
+
+        files = {
+            'file': exefilepath
+        }
+        headers = {
+            'Authorization': f'Bearer {SANDBOX_TOKEN}'
+        }
+        data = {
+            'analyze': 'true',
+            'tags': f'disposition=genome'
+        }
+        r = requests.post(SANDBOX_URL + "/submit/sample", files=files, headers=headers, data=data)
+        if r.status_code != 200:
+            logging.error(f"Error submitting to sandbox")
+            shutil.rmtree(tmp_dir)
+            return jsonify({
+                "message": "error submitting to sandbox",
+                "unit_test_results": {
+                    "num_failures": num_failures,
+                    "num_errors": num_errors,
+                    "num_tests": num_tests
+                }           
+           }), 200
+        else:
+            logging.info(r.text)
+            logging.info("Submitted to sandbox")
+            # remove the tmp dir using shutil
+            shutil.rmtree(tmp_dir)
+            return jsonify({
+                "message": "successfully submitted to sandbox",
+                "unit_test_results": {
+                    "num_failures": num_failures,
+                    "num_errors": num_errors,
+                    "num_tests": num_tests
+                },
+                "sandbox_hashes": r.json()['hashes']         
+           }), 200
+
+
+
+
     # remove the tmp dir using shutil
     shutil.rmtree(tmp_dir)
-
     return jsonify({
         "num_failures": num_failures,
         "num_errors": num_errors,
         "num_tests": num_tests
     })
+
+
 
 
 if __name__ == '__main__':
