@@ -176,12 +176,42 @@ class Genome:
         for chromosome in self.chromosomes:
             for edit in chromosome.edits:
                 if edit.edit_type == 'replace':
-                    # check if previous edits on parents have already replaced the element
-                    if not bool(set(chromosome.parents) & set(dirty_list)):
+                    # check if in dirty list or previous edits on parents have already replaced the element
+                    if (chromosome.position not in dirty_list) and (not bool(set(chromosome.parents) & set(dirty_list))):
                         # get the original and donor element
                         donor_prototype = session.query(Prototypes).filter(Prototypes.hash == edit.prototype_hash).first()
                         donor_tree = ET.ElementTree(ET.fromstring(donor_prototype.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
                         # replace the element
-                        self.modified_tree = replace_element(self.modified_tree, self.orig_elems[chromosome.position], donor_elems[edit.prototype_position])
+                        donor_elem = donor_elems[edit.prototype_position]
+                        self.modified_tree = replace_element(self.modified_tree, self.orig_elems[chromosome.position], donor_elem)
                         dirty_list.append(chromosome.position)
+
+                        # replace names associated with swap
+                        # step 1 - find the name of the element in the original tree
+                        old_name = None
+                        org_elem = self.orig_elems[chromosome.position]
+                        if org_elem.tag.split("}")[1] == 'name':
+                            old_name = org_elem.text
+                        else:
+                            for child in org_elem:
+                                if child.tag.split("}")[1] == 'name':
+                                    print(child.tag.split("}")[1])
+                                    print(child.text)
+                                    old_name = child.text
+                                    break
+                        # step 2 - find the name of the element in the donor tree
+                        new_name = None
+                        if donor_elem.tag.split("}")[1] == 'name':
+                            new_name = donor_elem.text
+                        else:
+                            for child in donor_elem:
+                                if child.tag.split("}")[1] == 'name':
+                                    new_name = child.text
+                                    break
+                        # step 3 - replace the name in all instances of the modified tree
+                        print(old_name, new_name)
+                        if new_name:
+                            for elem in self.modified_tree.getroot().iter():
+                                if elem.tag.split("}")[1] == 'name' and elem.text == old_name:
+                                    elem.text = new_name
