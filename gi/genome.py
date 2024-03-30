@@ -196,8 +196,6 @@ class Genome:
                         else:
                             for child in org_elem:
                                 if child.tag.split("}")[1] == 'name':
-                                    print(child.tag.split("}")[1])
-                                    print(child.text)
                                     old_name = child.text
                                     break
                         # step 2 - find the name of the element in the donor tree
@@ -210,7 +208,6 @@ class Genome:
                                     new_name = child.text
                                     break
                         # step 3 - replace the name in all instances of the modified tree
-                        print(old_name, new_name)
                         if new_name:
                             for elem in self.modified_tree.getroot().iter():
                                 if elem.tag.split("}")[1] == 'name' and elem.text == old_name:
