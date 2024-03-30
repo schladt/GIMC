@@ -8,6 +8,8 @@ from copy import deepcopy
 from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.orm import sessionmaker
 
+from models import Prototypes, Ingredient
+
 import xml.etree.ElementTree as ET
 
 def find_depth(elem, depth=0):
@@ -107,31 +109,7 @@ class Genome:
     Class representing a genome
     """       
 
-    def __init__(self, prototype_hash, build_genome=False):
-        
-        # Import settings
-        setting_file = os.path.abspath(os.path.join('..', 'settings.json'))
-
-        with open(setting_file, 'r') as f:
-            self.settings = json.load(f)
-
-        # connect to database
-        # create engine, connection, and session
-        self.db_engine = create_engine(self.settings['sqlalchemy_database_uri'])
-        self.db_conn = self.db_engine.connect()
-        self.Session = sessionmaker(bind=self.db_engine)
-        self.db_session = self.Session()
-
-        # Reflect the tables
-        metadata = MetaData()
-        metadata.reflect(bind=self.db_engine)
-
-        self.db_Analysis = Table('analysis', metadata, autoload_with=self.db_engine)
-        self.db_Sample = Table('sample', metadata, autoload_with=self.db_engine)
-        self.db_Tag = Table('tag', metadata, autoload_with=self.db_engine)
-        self.db_SampleTag = Table('sample_tag', metadata, autoload_with=self.db_engine)
-        self.db_Ingredient = Table('ingredient', metadata, autoload_with=self.db_engine)
-        self.db_Prototypes = Table('prototypes', metadata, autoload_with=self.db_engine)
+    def __init__(self, prototype_hash, build_genome=False, session=None):
 
         # load class variables
         self.prototype_hash = prototype_hash
@@ -139,13 +117,15 @@ class Genome:
         self.orig_elems = None
         self.modified_tree = None
         if build_genome:
-            self.build_genome()
+            if session is None:
+                raise ValueError("Session must be provided to build genome")
+            self.build_genome(session=session)
 
     def __str__(self):
         return "\n".join([chromosome.__str__() for chromosome in self.chromosomes])
 
 
-    def build_genome(self):
+    def build_genome(self, session):
         """
         Build a genome from a prototype hash. Assuming that XML is stored in the database
         
@@ -154,7 +134,7 @@ class Genome:
         """
 
         # Get the prototype
-        prototype = self.db_session.query(self.db_Prototypes).filter(self.db_Prototypes.c.hash == self.prototype_hash).first()
+        prototype = session.query(Prototypes).filter(Prototypes.hash == self.prototype_hash).first()
 
         # parse the xml file
         tree = ET.ElementTree(ET.fromstring(prototype.xml))
@@ -187,8 +167,7 @@ class Genome:
 
         self.chromosomes = genome
 
-
-    def apply_edits(self):
+    def apply_edits(self, session):
         """
         Apply the edits to the genome and store the modified tree in self.modified_tree
         """
@@ -200,13 +179,9 @@ class Genome:
                     # check if previous edits on parents have already replaced the element
                     if not bool(set(chromosome.parents) & set(dirty_list)):
                         # get the original and donor element
-                        donor_prototype = self.db_session.query(self.db_Prototypes).filter(self.db_Prototypes.c.hash == edit.prototype_hash).first()
+                        donor_prototype = session.query(Prototypes).filter(Prototypes.hash == edit.prototype_hash).first()
                         donor_tree = ET.ElementTree(ET.fromstring(donor_prototype.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
                         # replace the element
                         self.modified_tree = replace_element(self.modified_tree, self.orig_elems[chromosome.position], donor_elems[edit.prototype_position])
                         dirty_list.append(chromosome.position)
-
-
-
-        

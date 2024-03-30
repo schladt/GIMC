@@ -14,6 +14,8 @@ import xml.etree.ElementTree as ET
 from sqlalchemy import create_engine, MetaData, Table, func, Column, Integer, String, Text, ForeignKey, UniqueConstraint, exc
 from sqlalchemy.orm import sessionmaker
 
+from models import Prototypes, Ingredient, Base
+
 # Import settings
 setting_file = os.path.abspath(os.path.join('..', 'settings.json'))
 
@@ -27,39 +29,8 @@ def prepare_database():
     # create the engine
     engine = create_engine(settings['sqlalchemy_database_uri'])
 
-    # Create the Metadata Object 
-    metadata_obj = MetaData() 
-
-    # Define the profile table    
-    # database name 
-    Prototypes = Table( 
-        'prototypes',                                         
-        metadata_obj,                                     
-        Column('hash', String, primary_key=True),   
-        Column('name', String),
-        Column('prompt', Text),
-        Column('language', String),
-        Column('code', Text),
-        Column('xml', Text),
-        Column('status', Integer),
-        Column('num_errors', Integer),               
-    ) 
-
-    # Define the ingredient table
-    Ingredient = Table( 
-        'ingredient', 
-        metadata_obj, 
-        Column('id', Integer, primary_key = True, autoincrement=True), 
-        Column('prototype', String, ForeignKey('prototypes.hash'), nullable=False),
-        Column('tag', String), 
-        Column('position', Integer),
-        Column('depth', Integer),
-        # create unique constraint
-        UniqueConstraint('prototype', 'position', name='unique_ingredient') 
-    )
-
     # Create the Table 
-    metadata_obj.create_all(engine) 
+    Base.metadata.create_all(engine) 
 
 def find_depth(elem, depth=0):
     """Find the depth of an element in the XML tree."""
