@@ -2,11 +2,12 @@
 Contains the chromosome class and functions for constructing a genome from an xml file
 """
 
-import os, json
-from copy import deepcopy
-
-from sqlalchemy import create_engine, MetaData, Table
-from sqlalchemy.orm import sessionmaker
+import os
+import subprocess
+import shutil
+import requests
+import io
+import json
 
 from models import Prototypes, Ingredient
 
@@ -102,7 +103,6 @@ class Chromosome:
             return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits:\n\t{edit_str}"
         else:
             return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits: None"
-
 
 class Genome:
     """
@@ -212,3 +212,87 @@ class Genome:
                             for elem in self.modified_tree.getroot().iter():
                                 if elem.tag.split("}")[1] == 'name' and elem.text == old_name:
                                     elem.text = new_name
+    
+    def get_code(self, language='c', srcML_path=None, session=None):
+        """
+        Returns the code associated with the genome's modified tree
+        
+        Args:
+            language (str): the language of the code to return (default: 'c')
+            srcML_path (str): the path to the srcML executable
+            session (sqlalchemy.orm.session.Session): the database session
+        """
+        
+        if srcML_path is None:
+            raise ValueError("srcml_path must be provided to get code")
+
+        if session is None:
+            raise ValueError("Session must be provided to get code")
+
+        if language  != 'c':
+            raise ValueError("Only C code is currently supported at this time")
+
+        # apply edits
+        self.apply_edits(session=session)
+
+        # create random tmp dir if not exist
+        tmp_dir = os.urandom(8).hex()
+        tmp_dir = f'tmp_{tmp_dir}'
+        if not os.path.exists(tmp_dir):
+            os.makedirs(tmp_dir)
+
+        # write the new bfs genome to a new xml file
+        xml_filepath = os.path.join(tmp_dir, 'proto.xml')
+        self.modified_tree.write(xml_filepath)
+
+        # run srcML to get c code (python bindings exist but are not updated)
+        code_filepath = os.path.join(tmp_dir, 'proto.c')
+
+        p = subprocess.Popen([srcML_path, xml_filepath, '-o', code_filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        if p.returncode != 0:
+            raise ValueError(f"Error running srcML: {err}")
+        
+        # read the code from the file
+        with open(code_filepath, 'r') as f:
+            code = f.read()
+        
+        # remove the tmp dir
+        shutil.rmtree(tmp_dir)
+
+        return code
+    
+    def submit_to_evaluation(self, language='c', srcML_path=None, evaluation_server=None, session=None):
+        """
+        Submit the genome to evaluation
+        
+        Args:
+            language (str): the language of the code to return (default: 'c')
+            srcML_path (str): the path to the srcML executable
+            evaluation_server (str): the url of the evaluation server
+            session (sqlalchemy.orm.session.Session): the database session
+        """
+        if evaluation_server is None:
+            raise ValueError("evaluation_server must be provided to submit to evaluation")
+        
+        if session is None:
+            raise ValueError("Session must be provided to submit to evaluation")
+        
+        if srcML_path is None:
+            raise ValueError("srcml_path must be provided to submit to evaluation")
+        
+        if language  != 'c':
+            raise ValueError("Only C code is currently supported at this time")
+        
+
+        code = self.get_code(language=language, srcML_path=srcML_path, session=session)
+        
+        url = f"{evaluation_server}/submit"
+        code_file = io.StringIO(code)
+        files={'file': ('proto.c', code_file)}
+        r = requests.post(url, files=files)
+        if r.status_code != 200:
+            raise ValueError(f"Error submitting to evaluation server: {r.text}")
+        
+        return r.json()
+    
