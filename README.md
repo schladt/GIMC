@@ -7,7 +7,11 @@ Setting for this project should be located at `./settings.json`. This file is om
     "openai_api_key": " {{ YOUR OPENAI API KEY}}",
     "data_path": "/path/to/your/data/",
     "sqlalchemy_database_uri": "{{ YOUR DATABASE CONNECTION STRING }}",
-    "sandbox_token": "{{ YOU SECRET TOKEN }}"
+    "sandbox_token": "{{ YOU SECRET TOKEN }}",
+    "srcml_client": "/path/to/srcML/bin/srcml",
+    "sandbox_url": "http://127.0.0.1:5000",
+    "evaluation_server": "http://127.0.0.1:5090"
+
 }
 ```
 
