@@ -116,6 +116,8 @@ class Genome:
         self.chromosomes = []
         self.orig_elems = None
         self.modified_tree = None
+        self.fitness = 0
+        self.code = None
         if build_genome:
             if session is None:
                 raise ValueError("Session must be provided to build genome")
@@ -260,9 +262,9 @@ class Genome:
         # remove the tmp dir
         shutil.rmtree(tmp_dir)
 
-        return code
+        self.code = code
     
-    def submit_to_evaluation(self, language='c', srcML_path=None, evaluation_server=None, session=None):
+    def submit_to_evaluation(self, evaluation_server=None):
         """
         Submit the genome to evaluation
         
@@ -275,20 +277,11 @@ class Genome:
         if evaluation_server is None:
             raise ValueError("evaluation_server must be provided to submit to evaluation")
         
-        if session is None:
-            raise ValueError("Session must be provided to submit to evaluation")
-        
-        if srcML_path is None:
-            raise ValueError("srcml_path must be provided to submit to evaluation")
-        
-        if language  != 'c':
-            raise ValueError("Only C code is currently supported at this time")
-        
-
-        code = self.get_code(language=language, srcML_path=srcML_path, session=session)
+        if self.code is None:
+            raise ValueError("Genome must have code (hint: call get_code first) to submit to evaluation")
         
         url = f"{evaluation_server}/submit"
-        code_file = io.StringIO(code)
+        code_file = io.StringIO(self.code)
         files={'file': ('proto.c', code_file)}
         r = requests.post(url, files=files)
         if r.status_code != 200:
