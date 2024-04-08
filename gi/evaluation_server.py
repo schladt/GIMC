@@ -72,7 +72,7 @@ def submit():
 
         shutil.rmtree(tmp_dir)
         return jsonify({
-            "message": "error compiling code, num_errors",
+            "message": "error compiling code",
             "compile_errors": compile_errors           
         }), 200
 
@@ -87,7 +87,7 @@ def submit():
         logging.error(out)
         
         shutil.rmtree(tmp_dir)
-        return jsonify({"message": "error running unit tests"}), 500
+        return jsonify({"message": "error running unit tests"}), 200
 
     # Decode output as json
     try: 
@@ -99,7 +99,7 @@ def submit():
         logging.error(f"Error decoding json in unit test {UNIT_TEST_FILE} - {outfilepath}")
 
         shutil.rmtree(tmp_dir)
-        return jsonify({"message": "error decoding json from unit test output"}), 500
+        return jsonify({"message": "error decoding json from unit test output"}), 200
 
     # recompile and submit to sandbox
     exefilepath = os.path.join(tmp_dir, 'proto.exe')
