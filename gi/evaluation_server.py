@@ -99,7 +99,7 @@ def submit():
         logging.error(f"Error decoding json in unit test {UNIT_TEST_FILE} - {outfilepath}")
 
         shutil.rmtree(tmp_dir)
-        return jsonify({"message": "error decoding json from unit test output"}), 200
+        return jsonify({"message": "error running unit tests"}), 200
 
     # recompile and submit to sandbox
     exefilepath = os.path.join(tmp_dir, 'proto.exe')
@@ -120,6 +120,21 @@ def submit():
                 "num_errors": num_errors,
                 "num_tests": num_tests
             }   }), 200
+
+    # check if sandbox classificaiton is needed
+    json_data = json.loads(request.form['json_data']) 
+    if json_data['sandbox'] == False:
+        logging.info("Skipping sandbox classification")
+        
+        shutil.rmtree(tmp_dir)
+        return jsonify({
+            "message": "successfully compiled and ran unit tests",
+            "unit_test_results": {
+                "num_failures": num_failures,
+                "num_errors": num_errors,
+                "num_tests": num_tests
+            }           
+        }), 200
 
     # submit to sandbox
     logging.info("Submitting to sandbox")
