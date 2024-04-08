@@ -8,6 +8,7 @@ import shutil
 import requests
 import io
 import json
+import math
 
 from models import Prototypes, Ingredient
 
@@ -217,7 +218,7 @@ class Genome:
     
     def get_code(self, language='c', srcML_path=None, session=None):
         """
-        Returns the code associated with the genome's modified tree
+        Returns the code associated with the genome's modified tree. Also stores the code in self.code
         
         Args:
             language (str): the language of the code to return (default: 'c')
@@ -263,8 +264,9 @@ class Genome:
         shutil.rmtree(tmp_dir)
 
         self.code = code
+        return code
     
-    def submit_to_evaluation(self, evaluation_server=None):
+    def submit_to_evaluation(self, evaluation_server=None, sandbox=False):
         """
         Submit the genome to evaluation
         
@@ -283,9 +285,57 @@ class Genome:
         url = f"{evaluation_server}/submit"
         code_file = io.StringIO(self.code)
         files={'file': ('proto.c', code_file)}
-        r = requests.post(url, files=files)
+        data={'sandbox': sandbox}
+        r = requests.post(url, files=files, data={"json_data": json.dumps(data)})
         if r.status_code != 200:
             raise ValueError(f"Error submitting to evaluation server: {r.text}")
         
         return r.json()
-    
+
+    def calculate_fitness(self, server_response):
+        """
+        Calculates fitness from evaluation server response
+
+        Args:
+            server_response (dict): the response from the evaluation server
+
+        Returns:
+            float: the fitness of the genome. A value between 0 and 1. Also stores the fitness in self.fitness
+        """
+
+        # case one - server response is a compile error
+        if 'compile_errors' in server_response:
+            errors = server_response['compile_errors']['errors']
+            warnings = server_response['compile_errors']['warnings']
+            
+            error_penalty = 3  # errors to be worth 3x the penalty as a warning
+            warning_penalty = 1
+            compile_fitness = max(0, 1 - (math.log(errors * error_penalty + warnings * warning_penalty + 1,2)/10))
+
+        else:
+            compile_fitness = 1
+
+        # case two - unit test results
+        if 'unit_test_results' in server_response:
+            num_failures = server_response['unit_test_results']['num_failures']
+            num_errors = server_response['unit_test_results']['num_errors']
+            num_tests = server_response['unit_test_results']['num_tests']
+
+            unit_test_fitness = max(0, 1 - (num_failures + num_errors) / num_tests)
+        else:
+            unit_test_fitness = 0
+
+        # case three - sandbox classification probability
+        if 'sandbox_hashes' in server_response:
+            # get surrogate fitness as a placeholder for classification fitness
+            num_edits = sum([len(c.edits) for c in self.chromosomes])
+            edit_fitness = max(0,((6 - abs(6 - num_edits)) / 6))
+        else:
+            # get surrogate fitness as a placeholder for classification fitness
+            num_edits = sum([len(c.edits) for c in self.chromosomes])
+            edit_fitness = max(0,((6 - abs(6 - num_edits)) / 6))
+
+        
+        # combine the fitnesses
+        self.fitness = (compile_fitness + unit_test_fitness + edit_fitness) / 3
+        return self.fitness
