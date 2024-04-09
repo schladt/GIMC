@@ -6,11 +6,15 @@ import os, sys
 import json
 import shutil
 
-def create_file_str():
+def return_bfs_str():
     file_str = 'file_6.txt,file_7.txt,file_8.txt,file_33.txt,file_34.txt,file_35.txt,file_30.txt,file_31.txt,file_32.txt,file_27.txt,file_28.txt,file_29.txt,file_3.txt,file_4.txt,file_5.txt,file_24.txt,file_25.txt,file_26.txt,file_21.txt,file_22.txt,file_23.txt,file_18.txt,file_19.txt,file_20.txt,file_0.txt,file_1.txt,file_2.txt,file_15.txt,file_16.txt,file_17.txt,file_12.txt,file_13.txt,file_14.txt,file_10.txt,file_11.txt,file_9.txt'
     files = file_str.split(',')
     files.sort()
     return ','.join(files)
+
+def return_dfs_str():
+    file_str = 'file_6.txt,file_7.txt,file_8.txt,file_33.txt,file_34.txt,file_35.txt,file_30.txt,file_31.txt,file_32.txt,file_27.txt,file_28.txt,file_29.txt,file_3.txt,file_4.txt,file_5.txt,file_24.txt,file_25.txt,file_26.txt,file_21.txt,file_22.txt,file_23.txt,file_18.txt,file_19.txt,file_20.txt,file_0.txt,file_1.txt,file_2.txt,file_15.txt,file_16.txt,file_17.txt,file_12.txt,file_13.txt,file_14.txt,file_10.txt,file_11.txt,file_9.txt'
+    return file_str
 
 # GLOBAL FUNCTIONS - to be loaded on main
 file_search = None
@@ -18,7 +22,7 @@ dll_name = None
 
 class TestFileSearch(unittest.TestCase):
     def test_file_search(self):
-        sorted_files_str = create_file_str()
+        sorted_files_str = return_bfs_str()
         sorted_files_str = sorted_files_str.replace(" ", "")
         results = file_search()
         results = results.decode('utf-8')
@@ -27,6 +31,15 @@ class TestFileSearch(unittest.TestCase):
         results = results.split(",")
         results.sort()
         results = ','.join(results)
+        self.assertEqual(results, sorted_files_str)
+
+    def test_dfs(self):
+        sorted_files_str = return_dfs_str()
+        sorted_files_str = sorted_files_str.replace(" ", "")
+        results = file_search()
+        results = results.decode('utf-8')
+        results = results.replace(" ", "")
+        results = results.replace("\n", "")
         self.assertEqual(results, sorted_files_str)
 
 def run_tests():
