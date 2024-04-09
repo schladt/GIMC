@@ -330,11 +330,12 @@ class Genome:
             # get surrogate fitness as a placeholder for classification fitness
             num_edits = sum([len(c.edits) for c in self.chromosomes])
             edit_fitness = max(0,((6 - abs(6 - num_edits)) / 6))
-        else:
+        elif compile_fitness == 1:
             # get surrogate fitness as a placeholder for classification fitness
             num_edits = sum([len(c.edits) for c in self.chromosomes])
             edit_fitness = max(0,((6 - abs(6 - num_edits)) / 6))
-
+        else:
+            edit_fitness = 0
         
         # combine the fitnesses
         self.fitness = (compile_fitness + unit_test_fitness + edit_fitness) / 3
