@@ -16,8 +16,11 @@ def create_app(config_class=Config):
 
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)
-
     app.logger.setLevel(logging.INFO)
+
+    # create tables if needed
+    with app.app_context():
+        db.create_all()  # This will create the tables
 
     # reset status of previously running analyses
     with app.app_context():
