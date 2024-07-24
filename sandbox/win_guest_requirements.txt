@@ -4,3 +4,4 @@ binary2strings>=0.1.13
 capstone>=5.0.1
 requests>=2.31.0
 urllib3>=2.0.6
+setuptools>=71.1.0
