@@ -1,4 +1,4 @@
-# GISM - Genetically Improved Synthetic Malware
+# GIMC - Genetically Improved Malicious Code 
 
 ## Settings
 Setting for this project should be located at `./settings.json`. This file is omitted from the public repo but should contain the following values:
@@ -18,7 +18,7 @@ Setting for this project should be located at `./settings.json`. This file is om
 
 ## The Super Simple Sandbox
 
-GISM includes a very stripped down malware analysis sandbox. The sandbox is much simpler than nearly all commercial or community malware sandboxes but it's very quick, easy to deploy, and highly customizable. It provides the underlying dynamic analysis for GISM's discriminator network fitness evaluation.
+GIMC includes a very stripped down malware analysis sandbox. The sandbox is much simpler than nearly all commercial or community malware sandboxes but it's very quick, easy to deploy, and highly customizable. It provides the underlying dynamic analysis for GIMC's discriminator network fitness evaluation.
 
 ### sandbox controller configuration
 
