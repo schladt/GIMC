@@ -4,6 +4,7 @@ To run this script directly, use the following command:
 `python -m utils.monitor` from the sandbox directory
 """
 
+import asyncio
 import platform
 import logging
 import subprocess
@@ -13,7 +14,7 @@ import time
 # set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def vmware_linux_reset_snapshot(name, snapshot):
+async def vmware_linux_reset_snapshot(name, snapshot):
     """Reset VM to snapshot for VMware on Linux
     
     Args:
@@ -33,11 +34,21 @@ def vmware_linux_reset_snapshot(name, snapshot):
         logging.error(out)
         logging.error(err)
         return False
-    
+
+    # wait for VM to reset
+    running_vms = vmware_linux_get_running_vms()
+    while name in running_vms:
+        logging.debug(f"Waiting for VM {name} to reset")
+        time.sleep(1)
+        running_vms = vmware_linux_get_running_vms()
+
+    # start the VM
+    vmware_linux_start_vm(name)
+
     logging.info(f"Reset snapshot {name} - {snapshot}")
     return True
 
-def vmware_linux_start_vm(name):
+async def vmware_linux_start_vm(name):
     """Start VM for VMware on Linux
     
     Args:
@@ -58,7 +69,7 @@ def vmware_linux_start_vm(name):
 
     logging.info(f"Started VM {name}")
 
-def vmware_linux_get_running_vms():
+async def vmware_linux_get_running_vms():
     """Get running VMs for VMware on Linux
     
     Args:
@@ -84,7 +95,78 @@ def vmware_linux_get_running_vms():
 
     return vms
 
-def main():
+async def virsh_reset_snapshot(name, snapshot):
+    """Reset VM to snapshot using virsh (libvirt) locally on Linux
+    
+    Args:
+    - name (str): name of VM 
+    - snapshot (str): name of snapshot to reset to
+
+    Returns:
+    - None
+    """
+
+    p = subprocess.Popen(['virsh', 'snapshot-revert', name, snapshot], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = p.communicate()
+    if p.returncode != 0:
+        logging.error(f"Error resetting snapshot {name} - {snapshot}")
+        out = out.decode("utf-8")
+        err = err.decode("utf-8")
+        logging.error(out)
+        logging.error(err)
+        return False
+    
+    logging.info(f"Reset snapshot {name} - {snapshot}")
+    return True
+
+async def virsh_get_running_vms():
+    """Get running VMs for virsh (libvirt) on Linux
+    
+    Args:
+    - None
+
+    Returns:
+    - vms (list): list of running VMs
+    """
+
+    p = subprocess.Popen(['virsh', 'list', '--state-running', '--name'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = p.communicate()
+    if p.returncode != 0:
+        logging.error(f"Error getting running VMs")
+        out = out.decode("utf-8")
+        err = err.decode("utf-8")
+        logging.error(out)
+        logging.error(err)
+        return None
+    
+    vms = out.decode("utf-8").strip().split('\n')
+    vms = [vm.strip() for vm in vms if vm.strip() != '']
+    # logging.debug(f"Running VMs: {vms}")
+
+    return vms
+
+async def virsh_start_vm(name):
+    """Start VM for virsh (libvirt) on Linux
+    
+    Args:
+    - name (str): name of VM
+
+    Returns:
+    - None
+    """
+    
+    p = subprocess.Popen(['virsh', 'start', name])
+
+    # wait for VM to start
+    running_vms = virsh_get_running_vms()
+    while name not in running_vms:
+        logging.debug(f"Waiting for VM {name} to start")
+        time.sleep(1)
+        running_vms = virsh_get_running_vms()
+
+    logging.info(f"Started VM {name}")
+
+async def main():
     """
     Main function to monitor VMs while running independent of the Flask app
     """
@@ -109,6 +191,10 @@ def main():
         reset_snapshot = vmware_linux_reset_snapshot
         start_vm = vmware_linux_start_vm
         get_running_vms = vmware_linux_get_running_vms
+    elif vm_provider == 'libvirt':
+        reset_snapshot = virsh_reset_snapshot
+        start_vm = virsh_start_vm
+        get_running_vms = virsh_get_running_vms
     else:
         print("Unknown VM provider: {}".format(vm_provider))
 
@@ -116,18 +202,18 @@ def main():
     vms = config.VMS
 
     # initialize VMs by resetting to snapshot
-    for vm in vms:
-        reset_snapshot(vm['name'], vm['snapshot'])
+    list_of_tasks = [reset_snapshot(vm['name'], vm['snapshot']) for vm in vms]
+    await asyncio.gather(*list_of_tasks)
 
-    # wait until VMs are ready
-    running_vms = get_running_vms()
-    while len(running_vms) > 0:
-        time.sleep(1)
-        running_vms = get_running_vms()
+    # # wait until VMs are ready
+    # running_vms = get_running_vms()
+    # while len(running_vms) > 0:
+    #     time.sleep(1)
+    #     running_vms = get_running_vms()
 
     # start VMs
-    for vm in vms:
-        start_vm(vm['name'])
+    list_of_tasks = [start_vm(vm['name']) for vm in vms]
+    await asyncio.gather(*list_of_tasks)
 
     # set up database connection
     engine = sqlalchemy.create_engine(config.SQLALCHEMY_DATABASE_URI)
