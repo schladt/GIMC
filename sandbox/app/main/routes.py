@@ -16,6 +16,7 @@ from app.main import bp
 from app import db, auth
 from app.models import Sample, Analysis, Tag
 from utils.monitor import vmware_linux_get_running_vms, vmware_linux_reset_snapshot, vmware_linux_start_vm
+from utils.monitor import virsh_get_running_vms, virsh_reset_snapshot, virsh_start_vm
 
 import logging
 # set up logging
@@ -396,6 +397,10 @@ def revert_vm(vm_name, config):
         reset_snapshot = vmware_linux_reset_snapshot
         start_vm = vmware_linux_start_vm
         get_running_vms = vmware_linux_get_running_vms
+    elif vm_provider == 'virsh':
+        reset_snapshot = virsh_reset_snapshot
+        start_vm = virsh_start_vm
+        get_running_vms = virsh_get_running_vms
     else:
         logging.error(f"unknown VM provider: {vm_provider}")
         return
