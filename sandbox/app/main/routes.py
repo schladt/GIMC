@@ -4,6 +4,7 @@ import datetime
 import json
 import time
 import threading
+import asyncio
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -397,7 +398,7 @@ def revert_vm(vm_name, config):
         reset_snapshot = vmware_linux_reset_snapshot
         start_vm = vmware_linux_start_vm
         get_running_vms = vmware_linux_get_running_vms
-    elif vm_provider == 'virsh':
+    elif vm_provider == 'libvirt':
         reset_snapshot = virsh_reset_snapshot
         start_vm = virsh_start_vm
         get_running_vms = virsh_get_running_vms
@@ -416,18 +417,18 @@ def revert_vm(vm_name, config):
         return
 
     # revert VM to snapshot
-    if not reset_snapshot(vm_name, snapshot):
+    if not asyncio.run(reset_snapshot(vm_name, snapshot)):
         logging.error(f"error reverting VM: {vm_name} to snapshot: {snapshot}")
         return
 
-    # wait until VM is ready
-    running_vms = get_running_vms()
-    while vm_name in running_vms:
-        time.sleep(1)
-        running_vms = get_running_vms()
+    # # wait until VM is ready
+    # running_vms = get_running_vms()
+    # while vm_name in running_vms:
+    #     time.sleep(1)
+    #     running_vms = get_running_vms()
 
-    # start VM
-    start_vm(vm_name)
+    # # start VM
+    # asyncio.run(start_vm(vm_name))
 
     logging.info(f"reverted VM: {vm_name} to snapshot {snapshot}")
     return

@@ -9,7 +9,6 @@ import platform
 import logging
 import subprocess
 import sqlalchemy
-import time
 
 # set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -39,7 +38,7 @@ async def vmware_linux_reset_snapshot(name, snapshot):
     running_vms = vmware_linux_get_running_vms()
     while name in running_vms:
         logging.debug(f"Waiting for VM {name} to reset")
-        time.sleep(1)
+        await asyncio.sleep(1)
         running_vms = vmware_linux_get_running_vms()
 
     # start the VM
@@ -64,12 +63,12 @@ async def vmware_linux_start_vm(name):
     running_vms = vmware_linux_get_running_vms()
     while name not in running_vms:
         logging.debug(f"Waiting for VM {name} to start")
-        time.sleep(1)
+        await asyncio.sleep(1)
         running_vms = vmware_linux_get_running_vms()
 
     logging.info(f"Started VM {name}")
 
-async def vmware_linux_get_running_vms():
+def vmware_linux_get_running_vms():
     """Get running VMs for VMware on Linux
     
     Args:
@@ -105,7 +104,7 @@ async def virsh_reset_snapshot(name, snapshot):
     Returns:
     - None
     """
-
+    logging.info(f"Resetting snapshot {name} - {snapshot}...")
     p = subprocess.Popen(['virsh', 'snapshot-revert', name, snapshot], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     (out, err) = p.communicate()
     if p.returncode != 0:
@@ -119,7 +118,7 @@ async def virsh_reset_snapshot(name, snapshot):
     logging.info(f"Reset snapshot {name} - {snapshot}")
     return True
 
-async def virsh_get_running_vms():
+def virsh_get_running_vms():
     """Get running VMs for virsh (libvirt) on Linux
     
     Args:
@@ -161,7 +160,7 @@ async def virsh_start_vm(name):
     running_vms = virsh_get_running_vms()
     while name not in running_vms:
         logging.debug(f"Waiting for VM {name} to start")
-        time.sleep(1)
+        await asyncio.sleep(1)
         running_vms = virsh_get_running_vms()
 
     logging.info(f"Started VM {name}")
@@ -185,7 +184,7 @@ async def main():
         return
 
     # read config file for VM provider
-    vm_provider = config.VM_PROVIDER
+    vm_provider = config.VM_PROVIDER.strip().lower()
 
     if vm_provider == 'vmware':
         reset_snapshot = vmware_linux_reset_snapshot
@@ -208,7 +207,7 @@ async def main():
     # # wait until VMs are ready
     # running_vms = get_running_vms()
     # while len(running_vms) > 0:
-    #     time.sleep(1)
+    #     await asyncio.sleep(1)
     #     running_vms = get_running_vms()
 
     # start VMs
@@ -256,17 +255,17 @@ async def main():
                     if snapshot is None:
                         logging.error(f"Could not find snapshot for VM {analysis.analysis_vm}")
                         continue
-                    reset_snapshot(analysis.analysis_vm, snapshot)
+                    await reset_snapshot(analysis.analysis_vm, snapshot)
                     
                     # wait until VM is ready
                     running_vms = get_running_vms()
-                    while analysis.analysis_vm in running_vms:
+                    while analysis.analysis_vm not in running_vms:
                         logging.debug(f"Waiting for VM {analysis.analysis_vm} to reset")
-                        time.sleep(1)
+                        await asyncio.sleep(1)
                         running_vms = get_running_vms()
 
-                    # start VM
-                    start_vm(analysis.analysis_vm)
+                    # # start VM
+                    # await start_vm(analysis.analysis_vm)
 
                     # log
                     logging.info(f"Reset VM {analysis.analysis_vm} for analysis {analysis.id} due to timeout")
@@ -275,7 +274,7 @@ async def main():
             logging.error(f"Error in monitor loop: {e}")
 
         # sleep for 10 seconds
-        time.sleep(10)    
+        await asyncio.sleep(10)    
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
