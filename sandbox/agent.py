@@ -2,6 +2,8 @@
 Sandbox Agent
 """
 
+import sys
+import ctypes
 import argparse
 import logging
 import os
@@ -542,5 +544,21 @@ def report_error(error, analysis_id, sample_sha256):
     else:
         logging.info(r.json()['message'])
 
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+    
 if __name__ == '__main__':
-    main()
+    script_path = " ".join(sys.argv)
+    if not is_admin():
+        r = ctypes.windll.shell32.ShellExecuteW(None, "runas", "python", script_path, None, 1)
+        if r == 5:
+            logging.error("Admin permissions required")
+    else: 
+        try:
+            main()
+        except:   
+            pass
+        os.system("pause")
