@@ -1,9 +1,7 @@
 # a utilty to get a report
 
 import sys
-import platform
 import logging
-import sqlalchemy
 
 # set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
