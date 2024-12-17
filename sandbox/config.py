@@ -77,4 +77,4 @@ class Config(object):
             'snapshot': 'analysis'
         },
     ]
-    VM_TIMEOUT = 120
+    VM_TIMEOUT = 180
