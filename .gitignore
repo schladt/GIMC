@@ -5,6 +5,9 @@ __pycache__/
 # settings
 settings.json
 
+# reports 
+*reports.json
+
 # jupyter notebook
 .ipynb_checkpoints/
 scratch.ipynb
