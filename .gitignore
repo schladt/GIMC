@@ -8,6 +8,10 @@ settings.json
 # reports 
 *reports.json
 
+# classifier data files
+classifier/Data/
+classifier/fastText
+
 # jupyter notebook
 .ipynb_checkpoints/
 scratch.ipynb
