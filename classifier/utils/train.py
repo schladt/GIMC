@@ -24,8 +24,8 @@ def compute_accuracy(model, data_loader, device):
 
         for i, (features, targets) in enumerate(data_loader):
 
-            features = features.to(device).long()
-            targets = targets.to(device).long()
+            features = features.to(device)
+            targets = targets.to(device)
 
             logits = model(features)
             _, predicted_labels = torch.max(logits, 1)
@@ -38,7 +38,9 @@ def compute_accuracy(model, data_loader, device):
 
 def train_model(model, num_epochs, train_loader,
                 valid_loader, test_loader, optimizer,
-                device, logging_interval=50,
+                device, 
+                loss_fn=torch.nn.CrossEntropyLoss(),
+                logging_interval=50,
                 scheduler=None,
                 scheduler_on='valid_acc'):
 
@@ -52,6 +54,7 @@ def train_model(model, num_epochs, train_loader,
     - test_loader: PyTorch DataLoader object for test data
     - optimizer: PyTorch optimizer object (defines the update rule)
     - device: device type
+    - loss_fn: loss function for training
     - logging_interval: (int) frequency of minibatch logging
     - scheduler: PyTorch scheduler object
     - scheduler_on: (str) 'valid_acc' or 'minibatch_loss'
@@ -65,13 +68,15 @@ def train_model(model, num_epochs, train_loader,
         model.train()
         for batch_idx, (features, targets) in enumerate(train_loader):
 
-            features = features.to(device).long()
-            targets = targets.to(device).long()
+            features = features.to(device)
+            targets = targets.to(device)
+
+            # Zero previously calculated gradients
+            model.zero_grad()
 
             # ## FORWARD AND BACK PROP
             logits = model(features)
-            loss = torch.nn.functional.cross_entropy(logits, targets)
-            optimizer.zero_grad()
+            loss = loss_fn(logits, targets)
 
             loss.backward()
 
@@ -81,22 +86,25 @@ def train_model(model, num_epochs, train_loader,
             # ## LOGGING
             minibatch_loss_list.append(loss.item())
             if not batch_idx % logging_interval:
+                elapsed = (time.time() - start_time)/60
                 print(f'Epoch: {epoch+1:03d}/{num_epochs:03d} '
                       f'| Batch {batch_idx:04d}/{len(train_loader):04d} '
-                      f'| Loss: {loss:.4f}')
+                      f'| Loss: {loss:.4f}'
+                      f'| Elapsed: {elapsed:.2f} min',  end="\r", flush=True)
 
         model.eval()
         with torch.no_grad():  # save memory during inference
+            elapsed = (time.time() - start_time)/60
             train_acc = compute_accuracy(model, train_loader, device=device)
             valid_acc = compute_accuracy(model, valid_loader, device=device)
             print(f'Epoch: {epoch+1:03d}/{num_epochs:03d} '
                   f'| Train: {train_acc :.2f}% '
-                  f'| Validation: {valid_acc :.2f}%')
+                  f'| Validation: {valid_acc :.2f}%'
+                  f'| Elapsed: {elapsed:.2f} min')
             train_acc_list.append(train_acc)
             valid_acc_list.append(valid_acc)
 
-        elapsed = (time.time() - start_time)/60
-        print(f'Time elapsed: {elapsed:.2f} min')
+
         
         if scheduler is not None:
 
@@ -110,8 +118,8 @@ def train_model(model, num_epochs, train_loader,
 
     elapsed = (time.time() - start_time)/60
     print(f'Total Training Time: {elapsed:.2f} min')
-
-    test_acc = compute_accuracy(model, test_loader, device=device)
-    print(f'Test accuracy {test_acc :.2f}%')
+    if test_loader is not None:
+        test_acc = compute_accuracy(model, test_loader, device=device)
+        print(f'Test accuracy {test_acc :.2f}%')
 
     return minibatch_loss_list, train_acc_list, valid_acc_list
