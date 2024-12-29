@@ -4,7 +4,7 @@ Utility functions for training and evaluating neural networks.
 
 import time
 import torch
-
+import os
 
 def compute_accuracy(model, data_loader, device):
     """Compute the accuracy over the mini-batch
@@ -42,7 +42,8 @@ def train_model(model, num_epochs, train_loader,
                 loss_fn=torch.nn.CrossEntropyLoss(),
                 logging_interval=50,
                 scheduler=None,
-                scheduler_on='valid_acc'):
+                scheduler_on='valid_acc',
+                checkpoint_prefix=None):
 
     """Train a neural network and return the train/test accuracies.
 
@@ -61,9 +62,29 @@ def train_model(model, num_epochs, train_loader,
     """
 
     start_time = time.time()
-    minibatch_loss_list, train_acc_list, valid_acc_list = [], [], []
     
-    for epoch in range(num_epochs):
+    
+    if checkpoint_prefix is not None:
+        checkpoint_path = f'{checkpoint_prefix}_checkpoint.pth'
+    else:
+        checkpoint_path = None
+    
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        train_acc_list = checkpoint['train_acc_list']
+        valid_acc_list = checkpoint['valid_acc_list']
+        minibatch_loss_list = checkpoint['minibatch_loss_list']
+        print(f'Loaded checkpoint from {checkpoint_path}. Resume on epoch {epoch}')
+    else:
+        epoch = 0
+        minibatch_loss_list = []
+        train_acc_list = []
+        valid_acc_list = []
+    
+    while epoch < num_epochs:
 
         model.train()
         for batch_idx, (features, targets) in enumerate(train_loader):
@@ -115,7 +136,19 @@ def train_model(model, num_epochs, train_loader,
             else:
                 raise ValueError(f'Invalid `scheduler_on` choice.')
         
-
+        # save model checkpoint
+        if checkpoint_prefix is not None:
+            # checkpoint_path = f'{checkpoint_prefix}_epoch_{epoch+1}.pth'
+            checkpoint_path = f'{checkpoint_prefix}_checkpoint.pth'
+            torch.save({'model_state_dict': model.state_dict(), 
+                        'optimizer_state_dict': optimizer.state_dict(), 
+                        'epoch': epoch + 1, 
+                        'train_acc_list': train_acc_list,
+                        'valid_acc_list': valid_acc_list,
+                        'minibatch_loss_list': minibatch_loss_list
+                    }, checkpoint_path)
+        epoch += 1
+        
     elapsed = (time.time() - start_time)/60
     print(f'Total Training Time: {elapsed:.2f} min')
     if test_loader is not None:

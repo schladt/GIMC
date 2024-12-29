@@ -11,6 +11,7 @@ settings.json
 # classifier data files
 classifier/Data/
 classifier/fastText
+classifier/data/
 
 # jupyter notebook
 .ipynb_checkpoints/
