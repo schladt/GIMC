@@ -110,17 +110,17 @@ def train_model(model, num_epochs, train_loader,
                 elapsed = (time.time() - start_time)/60
                 print(f'Epoch: {epoch+1:03d}/{num_epochs:03d} '
                       f'| Batch {batch_idx:04d}/{len(train_loader):04d} '
-                      f'| Loss: {loss:.4f}'
+                      f'| Loss: {loss:.4f} '
                       f'| Elapsed: {elapsed:.2f} min',  end="\r", flush=True)
 
         model.eval()
         with torch.no_grad():  # save memory during inference
-            elapsed = (time.time() - start_time)/60
             train_acc = compute_accuracy(model, train_loader, device=device)
             valid_acc = compute_accuracy(model, valid_loader, device=device)
+            elapsed = (time.time() - start_time)/60
             print(f'Epoch: {epoch+1:03d}/{num_epochs:03d} '
                   f'| Train: {train_acc :.2f}% '
-                  f'| Validation: {valid_acc :.2f}%'
+                  f'| Validation: {valid_acc :.2f}% '
                   f'| Elapsed: {elapsed:.2f} min')
             train_acc_list.append(train_acc)
             valid_acc_list.append(valid_acc)
