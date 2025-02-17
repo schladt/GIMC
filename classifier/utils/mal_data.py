@@ -62,6 +62,9 @@ def get_mal_data(signatures):
             # Close the session
             session.close()
 
+            # fix report paths
+            report_paths = [item.lower() for item in report_paths]
+
             # fetch reports
             for report_path in tqdm(report_paths, desc=f"Reading {signature} reports"):
                 try:
@@ -98,3 +101,54 @@ def get_mal_data(signatures):
 
     return return_data
             
+def get_raw_data(signatures):
+    return_data = []
+    for signature in tqdm(signatures, desc="Loading raw data"):
+        # connect to database
+        engine = create_engine(db_uri)
+
+        # load tables
+        metadata_obj = MetaData()
+        conn = engine.connect()
+
+        Tag = Table('tag', metadata_obj, autoload_with=engine)
+        SampleTag = Table('sample_tag', metadata_obj, autoload_with=engine)
+        Analysis = Table('analysis', metadata_obj, autoload_with=engine)
+
+        # Start a session
+        session = Session(engine)
+
+        reports = []
+        bad_reports = []
+    
+        # get all reports with the tag of signature
+        stmt = select(Analysis.c.report).join(SampleTag, Tag.c.id == SampleTag.c.tag_id).join(
+            Analysis, SampleTag.c.sample_id == Analysis.c.sample).where(and_(
+            (Tag.c.value == signature),
+            (Analysis.c.status == 2)
+        ))
+
+        results = session.execute(stmt).fetchall()
+        print(f"Found {len(results)} {signature} reports")
+        report_paths = [r[0] for r in results] 
+
+        # fix report paths
+        report_paths = [item.lower() for item in report_paths]
+        
+        # Close the session
+        session.close()
+
+        # fetch reports
+        for report_path in tqdm(report_paths, desc=f"Reading {signature} reports"):
+            try:
+                with open(report_path) as f:
+                    r = f.read()
+                    # tag and append report
+                    reports.append({'id': signature, 'text': r})
+            except:
+                bad_reports.append(report_path)
+                print(f"Error reading {signature} report: {report_path}. Error number {len(bad_reports)}")
+                continue
+        return_data.extend(reports)
+    return return_data
+    
