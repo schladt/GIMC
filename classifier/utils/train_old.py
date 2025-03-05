@@ -43,9 +43,7 @@ def train_model(model, num_epochs, train_loader,
                 logging_interval=50,
                 scheduler=None,
                 scheduler_on='valid_acc',
-                checkpoint_prefix=None,
-                resume_on_epoch=None,
-                batch_size=None):
+                checkpoint_prefix=None):
 
     """Train a neural network and return the train/test accuracies.
 
@@ -73,26 +71,18 @@ def train_model(model, num_epochs, train_loader,
     
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
-        if resume_on_epoch is not None:
-            epoch = resume_on_epoch
-        else:
-            epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['model_states'][epoch])
-        optimizer.load_state_dict(checkpoint['optimizer_states'][epoch])
-        model_states = checkpoint['model_states'][:epoch+1]
-        optimizer_states = checkpoint['optimizer_states'][:epoch]
-        train_acc_list = checkpoint['train_acc_list'][:epoch]
-        valid_acc_list = checkpoint['valid_acc_list'][:epoch]
-        minibatch_loss_list = checkpoint['minibatch_loss_list'][:(epoch * batch_size)]
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        train_acc_list = checkpoint['train_acc_list']
+        valid_acc_list = checkpoint['valid_acc_list']
+        minibatch_loss_list = checkpoint['minibatch_loss_list']
         print(f'Loaded checkpoint from {checkpoint_path}. Resume on epoch {epoch}')
     else:
         epoch = 0
         minibatch_loss_list = []
         train_acc_list = []
         valid_acc_list = []
-        model_states = []
-        optimizer_states = []
-        print(f'No checkpoint found at {checkpoint_path}. Start training from scratch.')
     
     while epoch < num_epochs:
 
@@ -150,11 +140,9 @@ def train_model(model, num_epochs, train_loader,
         if checkpoint_prefix is not None:
             # checkpoint_path = f'{checkpoint_prefix}_epoch_{epoch+1}.pth'
             checkpoint_path = f'{checkpoint_prefix}_checkpoint.pth'
-            model_states.append(model.state_dict())
-            optimizer_states.append(optimizer.state_dict())
-            torch.save({'model_states': model_states, 
-                        'optimizer_states': optimizer_states, 
-                        'epoch': epoch, 
+            torch.save({'model_state_dict': model.state_dict(), 
+                        'optimizer_state_dict': optimizer.state_dict(), 
+                        'epoch': epoch + 1, 
                         'train_acc_list': train_acc_list,
                         'valid_acc_list': valid_acc_list,
                         'minibatch_loss_list': minibatch_loss_list
