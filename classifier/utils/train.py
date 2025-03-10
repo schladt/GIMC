@@ -5,7 +5,8 @@ Utility functions for training and evaluating neural networks.
 import time
 import torch
 import os
-
+from tqdm import tqdm
+from copy import deepcopy
 def compute_accuracy(model, data_loader, device):
     """Compute the accuracy over the mini-batch
     
@@ -19,11 +20,8 @@ def compute_accuracy(model, data_loader, device):
     """
 
     with torch.no_grad():
-
         correct_pred, num_examples = 0, 0
-
-        for i, (features, targets) in enumerate(data_loader):
-
+        for _, (features, targets) in tqdm(enumerate(data_loader), total=len(data_loader), desc='\tComputing Accuracy', leave=False):
             features = features.to(device)
             targets = targets.to(device)
 
@@ -32,7 +30,6 @@ def compute_accuracy(model, data_loader, device):
 
             num_examples += targets.size(0)
             correct_pred += (predicted_labels == targets).sum().to("cpu")
-
     return float(correct_pred)/num_examples * 100
 
 
@@ -44,8 +41,7 @@ def train_model(model, num_epochs, train_loader,
                 scheduler=None,
                 scheduler_on='valid_acc',
                 checkpoint_prefix=None,
-                resume_on_epoch=None,
-                batch_size=None):
+                resume_on_epoch=None):
 
     """Train a neural network and return the train/test accuracies.
 
@@ -77,14 +73,15 @@ def train_model(model, num_epochs, train_loader,
             epoch = resume_on_epoch
         else:
             epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['model_states'][epoch])
-        optimizer.load_state_dict(checkpoint['optimizer_states'][epoch])
-        model_states = checkpoint['model_states'][:epoch+1]
+
+        model_states = checkpoint['model_states'][:epoch]
         optimizer_states = checkpoint['optimizer_states'][:epoch]
         train_acc_list = checkpoint['train_acc_list'][:epoch]
-        valid_acc_list = checkpoint['valid_acc_list'][:epoch]
-        minibatch_loss_list = checkpoint['minibatch_loss_list'][:(epoch * batch_size)]
-        print(f'Loaded checkpoint from {checkpoint_path}. Resume on epoch {epoch}')
+        valid_acc_list = checkpoint['valid_acc_list'][:epoch]     
+        minibatch_loss_list = checkpoint['minibatch_loss_list'][:(epoch * len(train_loader))]
+        model.load_state_dict(model_states[-1])
+        optimizer.load_state_dict(optimizer_states[-1])
+        print(f'Loaded checkpoint from {checkpoint_path}. Resuming after epoch {epoch}')
     else:
         epoch = 0
         minibatch_loss_list = []
@@ -97,48 +94,45 @@ def train_model(model, num_epochs, train_loader,
     while epoch < num_epochs:
 
         model.train()
-        for batch_idx, (features, targets) in enumerate(train_loader):
+    
+        # create tqdm progress bar that includes minibatch loss
+        with tqdm(total=len(train_loader), desc=f'\tTraining Epoch: {epoch+1}/{num_epochs}', leave=False) as pbar:
+            for batch_idx, (features, targets) in enumerate(train_loader):
 
-            features = features.to(device)
-            targets = targets.to(device)
+                features = features.to(device)
+                targets = targets.to(device)
 
-            # Zero previously calculated gradients
-            model.zero_grad()
+                # Zero previously calculated gradients
+                model.zero_grad()
 
-            # ## FORWARD AND BACK PROP
-            logits = model(features)
-            loss = loss_fn(logits, targets)
+                # ## FORWARD AND BACK PROP
+                logits = model(features)
+                loss = loss_fn(logits, targets)
+                loss.backward()
 
-            loss.backward()
+                # UPDATE MODEL PARAMETERS
+                optimizer.step()
 
-            # ## UPDATE MODEL PARAMETERS
-            optimizer.step()
+                # LOGGING
+                minibatch_loss_list.append(loss.item())
+                pbar.set_description(f'\tTraining Epoch: {epoch+1}/{num_epochs} | Loss: {minibatch_loss_list[-1]:.4f}')
+                pbar.update(1)
 
-            # ## LOGGING
-            minibatch_loss_list.append(loss.item())
-            if not batch_idx % logging_interval:
-                elapsed = (time.time() - start_time)/60
-                print(f'Epoch: {epoch+1:03d}/{num_epochs:03d} '
-                      f'| Batch {batch_idx:04d}/{len(train_loader):04d} '
-                      f'| Loss: {loss:.4f} '
-                      f'| Elapsed: {elapsed:.2f} min',  end="\r", flush=True)
-
+        # VALIDATION AFTER EACH EPOCH
         model.eval()
         with torch.no_grad():  # save memory during inference
             train_acc = compute_accuracy(model, train_loader, device=device)
             valid_acc = compute_accuracy(model, valid_loader, device=device)
             elapsed = (time.time() - start_time)/60
             print(f'Epoch: {epoch+1:03d}/{num_epochs:03d} '
-                  f'| Train: {train_acc :.2f}% '
-                  f'| Validation: {valid_acc :.2f}% '
-                  f'| Elapsed: {elapsed:.2f} min')
+                f'| Train: {train_acc :.2f}% '
+                f'| Validation: {valid_acc :.2f}% '
+                f'| Elapsed: {elapsed:.2f} min')
             train_acc_list.append(train_acc)
             valid_acc_list.append(valid_acc)
-
-
         
+        # update learning rate
         if scheduler is not None:
-
             if scheduler_on == 'valid_acc':
                 scheduler.step(valid_acc_list[-1])
             elif scheduler_on == 'minibatch_loss':
@@ -146,12 +140,18 @@ def train_model(model, num_epochs, train_loader,
             else:
                 raise ValueError(f'Invalid `scheduler_on` choice.')
         
+        # increment epoch
+        epoch += 1
+        
         # save model checkpoint
         if checkpoint_prefix is not None:
             # checkpoint_path = f'{checkpoint_prefix}_epoch_{epoch+1}.pth'
             checkpoint_path = f'{checkpoint_prefix}_checkpoint.pth'
-            model_states.append(model.state_dict())
-            optimizer_states.append(optimizer.state_dict())
+            # deep copy model state
+            model_state = deepcopy(model.state_dict())
+            optimizer_state = deepcopy(optimizer.state_dict())
+            model_states.append(model_state)
+            optimizer_states.append(optimizer_state)
             torch.save({'model_states': model_states, 
                         'optimizer_states': optimizer_states, 
                         'epoch': epoch, 
@@ -159,7 +159,7 @@ def train_model(model, num_epochs, train_loader,
                         'valid_acc_list': valid_acc_list,
                         'minibatch_loss_list': minibatch_loss_list
                     }, checkpoint_path)
-        epoch += 1
+        
         
     elapsed = (time.time() - start_time)/60
     print(f'Total Training Time: {elapsed:.2f} min')
