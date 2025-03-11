@@ -21,7 +21,7 @@ def compute_accuracy(model, data_loader, device):
 
     with torch.no_grad():
         correct_pred, num_examples = 0, 0
-        for _, (features, targets) in tqdm(enumerate(data_loader), total=len(data_loader), desc='\tComputing Accuracy', leave=False):
+        for _, (features, targets) in tqdm(enumerate(data_loader), total=len(data_loader), desc='Computing Accuracy', leave=False):
             features = features.to(device)
             targets = targets.to(device)
 
@@ -96,7 +96,7 @@ def train_model(model, num_epochs, train_loader,
         model.train()
     
         # create tqdm progress bar that includes minibatch loss
-        with tqdm(total=len(train_loader), desc=f'\tTraining Epoch: {epoch+1}/{num_epochs}', leave=False) as pbar:
+        with tqdm(total=len(train_loader), desc=f'Training Epoch: {epoch+1}/{num_epochs}', leave=False) as pbar:
             for batch_idx, (features, targets) in enumerate(train_loader):
 
                 features = features.to(device)
@@ -115,7 +115,7 @@ def train_model(model, num_epochs, train_loader,
 
                 # LOGGING
                 minibatch_loss_list.append(loss.item())
-                pbar.set_description(f'\tTraining Epoch: {epoch+1}/{num_epochs} | Loss: {minibatch_loss_list[-1]:.4f}')
+                pbar.set_description(f'Training Epoch: {epoch+1}/{num_epochs} | Loss: {minibatch_loss_list[-1]:.4f}')
                 pbar.update(1)
 
         # VALIDATION AFTER EACH EPOCH
