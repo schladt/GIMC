@@ -66,8 +66,7 @@ def train_model(model, num_epochs, train_loader,
         checkpoint_path = f'{checkpoint_prefix}_checkpoint.pth'
     else:
         checkpoint_path = None
-    
-    if os.path.exists(checkpoint_path):
+    if checkpoint_path and os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
         if resume_on_epoch is not None:
             epoch = resume_on_epoch
