@@ -45,5 +45,6 @@ sample_under_test
 # test files
 root/
 reports.json
-gi/tmp/
+tmp/
 tmp_*
+
