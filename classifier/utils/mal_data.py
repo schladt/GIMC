@@ -90,7 +90,8 @@ def get_mal_data(signatures):
 
             # json dump reports to file
             print("Dumping reports to file")
-            with open(f'{signature}_reports.json', 'w') as f:
+            filepath = os.path.join(data_dir, f'{signature}_reports.json')
+            with open(filepath, 'w') as f:
                 json.dump(reports, f)
 
             return_data.extend(reports)
