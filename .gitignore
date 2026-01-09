@@ -34,9 +34,7 @@ sandbox/sysmon/Eula.txt
 sandbox/sysmon/Sysmon*
 
 # process monitor files
-sandbox/procmon/Eula.txt
-sandbox/procmon/Procmon*
-sandbox/procmon/procmon*
+sandbox/procmon/
 
 # exe files
 *.exe
