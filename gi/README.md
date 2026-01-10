@@ -223,7 +223,6 @@ Manages build VM lifecycle and performs ML classification on completed sandbox a
 ### Phase 6: Documentation & Refinement
 
 15. **Update classifier README** (`classifier/README.md`)
-    - Separate DSAA work from BSI work
     - Document BSI CNN model training process
     - Add usage instructions for inference
     - Document model performance metrics
@@ -237,8 +236,8 @@ Manages build VM lifecycle and performs ML classification on completed sandbox a
     - Monitoring and logging best practices
     - Common error scenarios and solutions
 
-17. **Smoke test full GI pipeline**
-    - Run small genetic improvement experiment (10 generations)
+17. **Test full GI pipeline**
+    - Run small genetic improvement experiment
     - Verify candidates progress through all stages
     - Check that fitness influences evolution
     - Validate VM resets occur correctly
@@ -246,7 +245,7 @@ Manages build VM lifecycle and performs ML classification on completed sandbox a
 
 ## Critical Design Decisions
 
-### 1. Fitness Normalization Strategy
+### Fitness Normalization Strategy
 
 **Options:**
 - **Simple multiplication:** `fitness = F1 × F2 × F3`
@@ -265,75 +264,9 @@ Manages build VM lifecycle and performs ML classification on completed sandbox a
   - Pros: No weight tuning, preserves diversity
   - Cons: More complex, may slow convergence
 
-**Recommendation:** Start with staged filtering (F1 > 0.5 to compute F2, F2 > 0.5 to compute F3), then use weighted product for final fitness. Allows early rejection of non-compiling code while still considering all objectives for viable candidates.
+**Current Thought:** Start with staged filtering (F1 > 0.5 to compute F2, F2 > 0.5 to compute F3), then use weighted product for final fitness. Allows early rejection of non-compiling code while still considering all objectives for viable candidates.
 
-### 2. Parallel Processing Model
 
-**Options:**
-- **Queue-based:** ES API maintains queue, assigns work to VMs
-  - Pros: Fair distribution, better load balancing
-  - Cons: More complex API, requires queue management
-
-- **Poll-based (like sandbox):** VMs poll for work round-robin
-  - Pros: Simpler, stateless API, matches existing pattern
-  - Cons: Potential for uneven load if VMs have different speeds
-
-**Recommendation:** Use poll-based model to match sandbox architecture. ES API returns first pending candidate on each poll. If load balancing becomes issue, add VM-specific queues later.
-
-### 3. Error Recovery Strategy
-
-**Scenarios:**
-- **Compilation crashes VM:** Build agent can't report back
-- **Unit test hangs:** Build agent stuck in building state
-- **Classification fails:** Monitor encounters corrupted report
-
-**Solutions:**
-- Monitor detects timeouts (status=1 for > `VM_TIMEOUT` seconds)
-- Force VM reset and mark candidate as error (status=4)
-- Crashed builds get F1=F2=F3=0, not re-queued (assume bad code)
-- Classification errors set F3=0, still mark complete (status=3, partial fitness)
-
-**Recommendation:** Implement aggressive timeouts with no retries. Bad code is more likely than transient errors. Log all errors for post-mortem analysis.
-
-### 4. VM Scaling Strategy
-
-**Options:**
-- **Static pool:** Fixed number of VMs, configured at startup
-  - Pros: Simple, predictable resource usage
-  - Cons: Can't adapt to load
-
-- **Dynamic scaling:** Add/remove VMs based on queue depth
-  - Pros: Better resource utilization
-  - Cons: Complex, slow (VM startup time)
-
-**Recommendation:** Start with static pool of 2-4 VMs. Easy to add more manually if needed. Dynamic scaling can be future enhancement if throughput becomes bottleneck.
-
-## Open Questions
-
-1. **Should build agent run unit tests in separate process?**
-   - Current sandbox runs analysis in same process as agent
-   - Unit tests might crash agent if malicious
-   - Separate process adds complexity but improves safety
-
-2. **How to handle candidates that pass unit tests but crash sandbox?**
-   - F1=0.9, F2=1.0, but no sandbox report for F3
-   - Set F3=0 and mark complete (status=3)? Or status=error (status=4)?
-   - May indicate interesting evasive behavior
-
-3. **Should ES API enforce uniqueness on code hash?**
-   - Prevent duplicate evaluations (efficiency)
-   - Or allow re-evaluation with different fitness (exploration)
-   - Deduplication could be optional via query parameter
-
-4. **What format for sandbox report input to classifier?**
-   - Raw JSON report from sandbox?
-   - Pre-extracted features (opcode sequences, API calls)?
-   - Need to align with classifier training data format
-
-5. **How to version classifier models?**
-   - Config points to specific checkpoint file
-   - Or version number in config with lookup table?
-   - How to A/B test new models?
 
 ## Success Criteria
 
@@ -349,11 +282,3 @@ Manages build VM lifecycle and performs ML classification on completed sandbox a
 - [ ] System handles errors gracefully (timeouts, crashes, bad code)
 - [ ] Multiple VMs can process candidates in parallel
 - [ ] All components documented and tested
-
-## Next Steps
-
-1. Review and refine this plan
-2. Prioritize tasks within each phase
-3. Set up development environment and test VMs
-4. Begin Phase 1: Core Infrastructure
-5. Iterate based on testing and feedback
