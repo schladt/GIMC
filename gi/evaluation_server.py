@@ -223,8 +223,8 @@ def vm_update():
     
     logging.info(f"VM {vm_name} updated candidate {candidate_hash}: {', '.join(updated_fields)}")
     
-    # if status is complete (3) or error (4), revert VM
-    if 'status' in request.json and request.json['status'] in [3, 4]:
+    # if status is analyze (2), complete (3) or error (4), revert VM
+    if 'status' in request.json and request.json['status'] in [2, 3, 4]:
         threading.Thread(target=revert_vm, args=(vm_name, Config)).start()
     
     return jsonify({"message": "candidate updated successfully"}), 200
