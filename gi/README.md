@@ -1,23 +1,50 @@
-# WORK IN PROGRESS - Plan: Multi-Agent Sandboxed Evaluation Server with ML Classification
+# Multi-Agent Evaluation Server with ML Classification for Genetic Improvement
 
 ## Overview
 
-This plan redesigns the evaluation server using a multi-component architecture similar to the GIMC simple sandbox. The new system will safely compile and test potentially malicious GI-evolved BSI code by isolating each build in a VM snapshot, computing three fitness metrics (compile quality, unit tests, and ML-classified behavior), and supporting parallel evaluation of multiple candidates.
+This system provides a multi-component architecture for safely evaluating GI-evolved BSI code. Code candidates are compiled and tested in isolated VM snapshots, with three fitness metrics computed: compile quality (F1), unit test pass rate (F2), and ML-classified behavior (F3). The system supports parallel evaluation across multiple build VMs.
+
+## Current Status
+
+### ✅ Implemented Components
+
+1. **Evaluation Server** (`evaluation_server.py`) - Flask API on Linux host
+2. **Build Agent** (`build_agent.py`) - Windows VM agent for compilation and testing
+3. **Monitor** (`monitor.py`) - Linux host agent for classification and VM management
+4. **Database Models** (`models.py`) - Candidate table with full schema
+5. **Configuration** (`config.py`) - VM settings and database connection
+
+### 🚧 Work In Progress
+
+- **Genome Integration** - `genome.py` still uses old synchronous evaluation flow
+- **GI Demo** - `gi_demo.ipynb` not yet updated for async evaluation
+- **End-to-End Loop** - Full GI pipeline not yet operational
 
 ## Architecture Components
 
-### 1. ES API Server (Flask on Linux Host)
-Central orchestrator that manages candidate tracking and coordinates all other components.
+### 1. Evaluation Server (`evaluation_server.py`)
+Flask-based API server running on Linux host. Manages candidate tracking and coordinates build agents and monitor.
 
-**Endpoints:**
-- `POST /submit` - Accepts C code, creates candidate record, returns hash
-- `POST /update` - Receives fitness/status updates from build agents and monitor
-- `GET /info/<hash>` - Returns candidate record for given hash
+**Implemented Endpoints:**
+- `POST /submit` - Accepts C code (plain or base64), creates candidate record, returns hash
+- `GET /vm/checkin` - Build VMs poll for pending tasks (status=0)
+- `POST /vm/update` - VMs report fitness values and status updates
+- `GET /info/<hash>` - Returns candidate record (optionally includes code with `?returncode=true`)
+- `GET /reanalyze/<hash>` - Resets candidate to pending (status=0) for re-evaluation
+- `GET /testauth` - Authentication test endpoint
 
-### 2. Candidates Database Table
+**Authentication:**
+- Bearer token authentication using `sandbox_token` from `settings.json`
+
+**Database:**
+- Uses PostgreSQL configured in `settings.json`
+- Automatically creates tables on startup
+- Candidate table tracks all submissions and fitness scores
+
+### 2. Candidate Database Table
 Tracks status and fitness scores for each submitted code candidate.
 
-**Schema:**
+**Schema (`models.py`):**
 - `hash` (sha256, primary key) - unique identifier for code
 - `code` (text, base64 encoded) - submitted C source code
 - `status` (integer) - 0=pending, 1=building, 2=analyzing, 3=complete, 4=error
@@ -25,228 +52,207 @@ Tracks status and fitness scores for each submitted code candidate.
 - `F2` (float) - Fitness 2: unit test pass rate (0 if no binary produced)
 - `F3` (float) - Fitness 3: ML classification score (target class probability)
 - `analysis_id` (integer, foreign key) - associated GIMC sandbox Analysis.id
-- `date_added` (timestamp)
-- `date_updated` (timestamp, auto-update)
+- `date_added` (timestamp, timezone-aware)
+- `date_updated` (timestamp, timezone-aware, auto-update)
 - `error_message` (text)
 - `build_vm` (string) - VM name assigned to this build
 
-### 3. Build Agent (Windows VM)
-Runs on sandboxed VMs to compile, test, and submit candidates for dynamic analysis.
+**Status Flow:**
+- 0 (pending) → 1 (building) → 2 (analyzing) → 3 (complete)
+- Any stage can transition to 4 (error)
 
-**Workflow:**
-1. Poll ES API `/checkin` endpoint for pending candidates (status=0)
-2. Receive code and decode from base64
-3. Compile using provided Makefile and compute F1 from compiler warnings/errors (weighted: errors × 3 + warnings)
-4. If binary produced, run unit tests and compute F2 from pass rate (else F2=0)
-5. If binary produced, submit to GIMC simple sandbox for dynamic analysis
-6. Report back via `/update` with hash, F1, F2, analysis_id (updates status to 2=analyzing if binary submitted, else 3=complete)
-7. Await VM snapshot reset from ES API
+### 3. Build Agent (`build_agent.py`)
+Runs on Windows VMs to compile, test, and submit candidates for dynamic analysis.
 
-**Configuration:**
-- ES API URL
-- GIMC sandbox URL and auth token
-- Makefile path
-- Unit test script path
-- Poll interval (default: 5 seconds)
-- Timeout (default: 300 seconds)
+**Implemented Workflow:**
+1. Poll ES `/vm/checkin` endpoint for pending candidates (status=0)
+2. Receive base64-encoded code via response body
+3. Decode and save code to build directory
+4. Compile using Makefile and compute F1 from compiler warnings/errors (weighted: errors × 3 + warnings)
+5. If binary produced, run unit tests and compute F2 from pass rate (else F2=0)
+6. If binary produced, submit to GIMC sandbox with classification tag (`class=<label>`)
+7. Update candidate via `/vm/update` with F1, F2, analysis_id
+8. Set status to 2 (analyzing) if submitted to sandbox, else 3 (complete)
+9. Exit and await VM snapshot reset by ES
 
-### 4. Monitor Agent (Linux Host)
-Manages build VM lifecycle and performs ML classification on completed sandbox analyses.
+**Command-Line Arguments:**
+- `--es-url` - Evaluation server URL (required)
+- `--es-token` - Evaluation server auth token (required)
+- `--sandbox-url` - GIMC sandbox URL (required)
+- `--sandbox-token` - GIMC sandbox auth token (required)
+- `--makefile` - Path to Makefile (required)
+- `--unit-test` - Path to unit test script (required)
+- `--build-dir` - Build directory path (required)
+- `--class-label` - Classification label for sandbox submission (required)
+- `--poll-interval` - Seconds between polls (default: 5)
+- `--build-timeout` - Compilation timeout (default: 300)
 
-**Responsibilities:**
-- **VM Lifecycle Management:**
-  - Monitor candidates with status=1 (building) for timeouts
-  - Reset stuck VMs and mark candidates as error (status=4)
-  - Track VM availability and health
+### 4. Monitor Agent (`monitor.py`)
+Runs on Linux host to manage build VMs and perform ML classification on completed analyses.
 
-- **Classification Pipeline:**
-  - Poll ES API for candidates with status=2 (submitted to sandbox)
-  - Check GIMC sandbox for completed analyses
-  - Load trained CNN classifier and tokenizer
-  - Classify sandbox report (dynamic analysis features)
-  - Compute F3 as probability of target class (from config)
-  - Update candidate via `/update` to status=3 (complete)
+**Implemented Responsibilities:**
 
-**Configuration:**
-- ES API URL
-- GIMC sandbox URL and auth token
+**VM Lifecycle Management:**
+- Monitors candidates with status=1 (building) for timeouts
+- Resets stuck VMs and marks candidates as error (status=4)
+- Supports both VMware and libvirt VM providers
+- Uses async VM operations from `sandbox.utils.monitor`
+
+**Classification Pipeline:**
+- Polls for candidates with status=2 (analyzing)
+- Checks GIMC sandbox for completed analyses (status=2) or errors (status=3)
+- Loads CNN classifier and tokenizer on startup (once)
+- Preprocesses sandbox reports in-memory (no intermediate files)
+- Extracts target class from analysis tags (`class=<label>`)
+- Classifies report and computes F3 as probability of target class
+- Updates candidate to status=3 (complete) with F3 score
+- Handles analysis errors by setting F3=0 and recording error message
+
+**Command-Line Arguments:**
+- `--classifier` - Path to CNN checkpoint file (required)
+- `--tokenizer` - Path to tokenizer directory (required)
+- `--signatures` - Comma-separated class labels, e.g., "wmi,com,cmd,benign" (required)
+- `--vocab-size` - Vocabulary size (default: 20000)
+- `--embed-dim` - Embedding dimension (default: 128)
+- `--num-classes` - Number of classes (default: 4)
+- `--dropout` - Dropout rate (default: 0.5)
+- `--poll-interval` - Seconds between polls (default: 10)
+
+**VM Configuration (`config.py`):**
 - VM provider (vmware/libvirt)
-- VM configurations (name, snapshot, IP)
+- VM list with names, IPs, and snapshot names
 - VM timeout (default: 300 seconds)
-- Classifier model path
-- Tokenizer path
-- Target class label
 
-## Implementation Roadmap
+## Quick Start
 
-### Phase 1: Core Infrastructure
+### Prerequisites
+- PostgreSQL database (configured in `../settings.json`)
+- GIMC sandbox running and accessible
+- CNN classifier trained and checkpoint saved
+- Tokenizer artifacts saved
+- Windows VM(s) with build tools (GCC/MinGW)
+- Linux host with libvirt or VMware
 
-1. **Create ES API Flask application** (`gi/app/`)
-   - Set up Flask app with SQLAlchemy
-   - Implement database models in `gi/app/models.py` (Candidate table)
-   - Create main routes in `gi/app/main/routes.py`
-   - Add authentication (Bearer token like sandbox)
-   - Implement `/submit`, `/update`, `/info`, `/reset` endpoints
-   - Add startup logic to reset any status=1 to pending (crash recovery)
+### 1. Start Evaluation Server
+```bash
+cd gi
+python evaluation_server.py 0.0.0.0 5090
+```
 
-2. **Design database schema and migrations**
-   - Define Candidate model with all required fields
-   - Create initialization script to set up tables
-   - Add database connection configuration to `gi/config.py`
-   - Document schema in README
+### 2. Start Monitor (on Linux host)
+```bash
+cd gi
+python monitor.py \
+  --classifier /path/to/cnn4bsi_checkpoint.pth \
+  --tokenizer /path/to/mal-reformer \
+  --signatures "wmi,com,cmd,benign" \
+  --vocab-size 20000 \
+  --embed-dim 128 \
+  --num-classes 4 \
+  --poll-interval 10
+```
 
-3. **Create build agent** (`gi/build_agent.py`)
-   - Implement polling loop for pending candidates
-   - Add compilation logic with configurable Makefile
-   - Add F1 calculation from compiler output (regex parsing)
-   - Implement unit test execution and F2 calculation
-   - Add GIMC sandbox submission logic
-   - Implement update reporting to ES API
-   - Add error handling and timeout management
-   - Require admin privileges for Windows VM execution
+### 3. Start Build Agent(s) (on Windows VM)
+```bash
+python build_agent.py \
+  --es-url http://192.168.122.1:5090 \
+  --es-token <token> \
+  --sandbox-url http://192.168.122.1:5000 \
+  --sandbox-token <token> \
+  --makefile C:\path\to\Makefile \
+  --unit-test C:\path\to\test.py \
+  --build-dir C:\build \
+  --class-label wmi \
+  --poll-interval 5
+```
 
-4. **Create monitor agent** (`gi/eval_monitor.py`)
-   - Implement VM management functions (reset, start, stop)
-   - Add timeout monitoring for stuck builds
-   - Create polling loop for status=3 candidates
-   - Integrate with GIMC sandbox API to check analysis completion
-   - Implement ML classification pipeline
-   - Add F3 calculation and reporting
+### 4. Submit Code for Evaluation
+```bash
+# Using curl
+curl -X POST http://localhost:5090/submit \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"code": "<base64-encoded-code>"}'
 
-### Phase 2: ML Integration
+# Returns: {"status": "success", "message": "Code received for evaluation"}
+```
 
-5. **Create classification utility** (`gi/classify.py`)
-   - Load CNN model from saved checkpoint
-   - Load tokenizer from saved artifacts
-   - Implement preprocessing for sandbox reports
-   - Add inference function that returns class probabilities
-   - Ensure can run without GPU (CPU fallback)
-   - Add logging and error handling
-   - Document expected input format
+### 5. Check Candidate Status
+```bash
+curl -X GET http://localhost:5090/info/<hash> \
+  -H "Authorization: Bearer <token>"
 
-6. **Integrate classifier into monitor**
-   - Load model/tokenizer on monitor startup (avoid reloading)
-   - Fetch sandbox reports from GIMC sandbox
-   - Extract relevant features for classification
-   - Pass features through classification pipeline
-   - Extract target class probability for F3
-   - Handle classification errors gracefully
+# Returns candidate with F1, F2, F3, status, etc.
+```
 
-### Phase 3: Genome Integration
+## Roadmap: Near-Term Work
 
-7. **Update Genome class** (`gi/genome.py`)
-   - Modify `submit_to_evaluation()` to:
-     - POST code to new ES API `/submit` endpoint
-     - Return hash immediately (non-blocking)
-     - Remove old synchronous evaluation logic
+### Phase 1: Genome Integration (High Priority)
+
+**Goal:** Update `genome.py` to use the new async evaluation server instead of the old synchronous flow.
+
+1. **Update Genome submission** (`genome.py`)
+   - [ ] Modify `submit_to_evaluation()` to POST code to ES `/submit` endpoint
+   - [ ] Store returned hash in genome for tracking
+   - [ ] Remove old synchronous evaluation logic
    
-   - Add new `get_fitness()` method to:
-     - Poll `/info/<hash>` endpoint until status=4 or 5
-     - Extract F1, F2, F3 from response
-     - Compute combined fitness (discuss normalization strategy)
-     - Handle errors (status=5)
+2. **Add fitness polling** (`genome.py`)
+   - [ ] Implement `get_fitness()` method that polls `/info/<hash>` until complete
+   - [ ] Extract F1, F2, F3 from response
+   - [ ] Compute combined fitness (see normalization strategy below)
+   - [ ] Handle error status (4) appropriately
    
-   - Remove placeholder `edit_fitness` calculation from `calculate_fitness()`
-   - Update method signatures and documentation
+3. **Update GI demo** (`gi_demo.ipynb`)
+   - [ ] Update evaluation workflow to use async submission
+   - [ ] Add fitness visualization for F1, F2, F3 separately
+   - [ ] Update documentation cells
+   - [ ] Test end-to-end evolution loop
 
-8. **Update GI demo notebook** (`gi/gi_demo.ipynb`)
-   - Modify genome evaluation workflow to use new async pattern
-   - Update fitness plotting to show F1, F2, F3 separately
-   - Add error handling for failed evaluations
-   - Update documentation cells
+### Phase 2: Testing & Validation
 
-### Phase 4: Configuration & Deployment
-
-9. **Extend configuration** (`gi/config.py`)
-   - Add ES API server settings:
-     - `EVAL_SERVER_URL`
-     - `EVAL_SERVER_TOKEN`
-     - `EVAL_DB_URI`
+4. **Create integration tests** (`unit_tests/`)
+   - [ ] `test_eval_api.py` - Test all ES endpoints
+   - [ ] `test_candidate_flow.py` - Test full candidate lifecycle
+   - [ ] `test_genome_integration.py` - Test genome submission and fitness retrieval
    
-   - Add build agent settings:
-     - `BUILD_VMS` (list of VM configurations)
-     - `BUILD_VM_TIMEOUT`
-     - `MAKEFILE_PATH`
-     - `BUILD_UNIT_TEST_PATH`
+5. **Manual testing**
+   - [ ] Submit known-good code and verify all three fitness scores
+   - [ ] Submit code with compile errors and verify F1 calculation
+   - [ ] Submit code that fails unit tests and verify F2=0
+   - [ ] Test VM timeout and recovery
+   - [ ] Test parallel processing with multiple build VMs
+
+### Phase 3: Documentation & Deployment
+
+6. **Operational documentation**
+   - [ ] Create deployment guide for all components
+   - [ ] Document VM setup and snapshot creation
+   - [ ] Add troubleshooting guide
+   - [ ] Document monitoring and logging practices
    
-   - Add monitor settings:
-     - `VM_PROVIDER` (vmware/libvirt)
-     - `VM_SNAPSHOT_NAME`
+7. **VM setup automation**
+   - [ ] Create Windows VM setup script for build agent
+   - [ ] Document network configuration requirements
+   - [ ] Create systemd service files for server and monitor
+
+### Phase 4: Optimization & Scaling
+
+8. **Performance improvements**
+   - [ ] Measure candidate throughput
+   - [ ] Profile bottlenecks (likely classification)
+   - [ ] Consider batch classification for multiple candidates
+   - [ ] Add metrics/monitoring endpoints
    
-   - Add classifier settings:
-     - `CLASSIFIER_TARGET_CLASS` (e.g., "wmi", "com", "cmd")
-     - Verify existing `CLASSIFIER_PATH` and `TOKENIZER_PATH`
+9. **Scaling support**
+   - [ ] Test with 5+ build VMs
+   - [ ] Document how to add new VMs
+   - [ ] Add health check endpoints for monitoring
 
-10. **Create deployment documentation** (`gi/README.md`)
-    - Document four-component architecture
-    - Provide setup instructions for each component:
-      - ES API server on Linux host
-      - Build agent on Windows VMs
-      - Monitor on Linux host
-      - GIMC sandbox (already running)
-    - Add VM configuration guide (snapshots, networking)
-    - Document required dependencies for each component
-    - Add troubleshooting section
-
-11. **Create VM setup scripts**
-    - Windows VM setup script for build agent:
-      - Install GCC (MinGW-w64)
-      - Install Python and dependencies
-      - Configure build agent to auto-start
-      - Create VM snapshot
-    - Linux setup script for ES API and monitor
-    - Document network configuration requirements
-
-### Phase 5: Testing & Validation
-
-12. **Create unit tests** (`gi/unit_tests/`)
-    - `test_eval_api.py` - Test all ES API endpoints
-    - `test_build_agent.py` - Test compilation and fitness calculation
-    - `test_monitor.py` - Test VM management and classification
-    - `test_genome_integration.py` - Test end-to-end genome submission
-
-13. **Integration testing**
-    - Deploy all components in test environment
-    - Submit known-good and known-bad code samples
-    - Verify F1, F2, F3 calculations
-    - Test VM reset and recovery
-    - Test parallel candidate processing
-    - Verify classification accuracy on test set
-
-14. **Performance testing**
-    - Measure throughput (candidates per minute)
-    - Test with multiple VMs for parallel processing
-    - Identify bottlenecks (compilation, testing, classification)
-    - Optimize as needed
-
-### Phase 6: Documentation & Refinement
-
-15. **Update classifier README** (`classifier/README.md`)
-    - Document BSI CNN model training process
-    - Add usage instructions for inference
-    - Document model performance metrics
-    - Add retraining guide for new classes
-
-16. **Create operational runbook**
-    - How to start/stop all components
-    - How to add new VMs for scaling
-    - How to update classifier model
-    - How to change target class
-    - Monitoring and logging best practices
-    - Common error scenarios and solutions
-
-17. **Test full GI pipeline**
-    - Run small genetic improvement experiment
-    - Verify candidates progress through all stages
-    - Check that fitness influences evolution
-    - Validate VM resets occur correctly
-    - Confirm no resource leaks or stuck processes
-
-## Critical Design Decisions
+## Design Decisions
 
 ### Fitness Normalization Strategy
 
-**Options:**
+**Options under consideration:**
 - **Simple multiplication:** `fitness = F1 × F2 × F3`
   - Pros: Simple, treats all objectives equally
   - Cons: Creates optimization cliffs (any zero = total zero)
@@ -263,21 +269,101 @@ Manages build VM lifecycle and performs ML classification on completed sandbox a
   - Pros: No weight tuning, preserves diversity
   - Cons: More complex, may slow convergence
 
-**Current Thought:** Start with staged filtering (F1 > 0.5 to compute F2, F2 > 0.5 to compute F3), then use weighted product for final fitness. Allows early rejection of non-compiling code while still considering all objectives for viable candidates.
+**Current approach:** Staged filtering is built into the pipeline (no F2 without compile, no F3 without binary submission). Final fitness combination will be implemented in `genome.py` during integration phase. Recommended starting point: weighted product `fitness = F1^w1 × F2^w2 × F3^w3` with configurable weights.
 
+### Architecture: Single-File vs. Flask App Structure
 
+**Decision:** Single-file server (`evaluation_server.py`) instead of `gi/app/` structure.
 
-## Success Criteria
+**Rationale:**
+- Simpler deployment and maintenance
+- All ES logic in one place (~200 lines)
+- Fewer imports and module dependencies
+- Easier to understand for future modifications
+- Database models separated into `models.py` for clarity
 
-- [ ] ES API successfully accepts code submissions and returns hashes
-- [ ] Build agent compiles code in VM and reports F1
-- [ ] Build agent runs unit tests and reports F2
-- [ ] Build agent submits binaries to GIMC sandbox
-- [ ] Monitor detects completed analyses and computes F3
-- [ ] Monitor successfully resets VMs after builds
-- [ ] Genome class can submit code and retrieve fitness asynchronously
-- [ ] Classifier produces reasonable probabilities for known samples
-- [ ] Full GI loop can evolve candidates over multiple generations
-- [ ] System handles errors gracefully (timeouts, crashes, bad code)
-- [ ] Multiple VMs can process candidates in parallel
-- [ ] All components documented and tested
+## Implementation Status
+
+### ✅ Completed
+
+- [x] ES API accepts code submissions and returns hashes
+- [x] Build agent compiles code in VM and reports F1
+- [x] Build agent runs unit tests and reports F2
+- [x] Build agent submits binaries to GIMC sandbox
+- [x] Monitor detects completed analyses and computes F3
+- [x] Monitor successfully resets VMs after builds and timeouts
+- [x] Classifier produces probabilities for sandbox reports
+- [x] System handles errors gracefully (timeouts, crashes, bad code)
+- [x] Multiple VMs can process candidates in parallel
+- [x] Database models with timezone-aware timestamps
+- [x] Authentication via Bearer token
+
+### 🚧 In Progress / Not Started
+
+- [ ] Genome class updated to use async evaluation
+- [ ] Full GI loop operational end-to-end
+- [ ] GI demo notebook updated
+- [ ] Integration tests created
+- [ ] VM setup automation scripts
+- [ ] Operational documentation complete
+- [ ] Performance benchmarking
+
+## Configuration
+
+### `settings.json` (project root)
+```json
+{
+  "sqlalchemy_database_uri": "postgresql://user:pass@localhost/gimc",
+  "sandbox_token": "your_token_here",
+  "sandbox_url": "http://192.168.122.1:5000",
+  "data_path": "/mnt/data/gimc",
+  "evaluation_server": "http://127.0.0.1:5090"
+}
+```
+
+### `config.py` (gi folder)
+Contains `Config` class with:
+- `SQLALCHEMY_DATABASE_URI` - Database connection
+- `SECRET_TOKEN` - Authentication token
+- `SANDBOX_TOKEN` and `SANDBOX_URL` - For build agent
+- `VM_PROVIDER` - 'vmware' or 'libvirt'
+- `VMS` - List of build VM configurations (name, IP, snapshot)
+- `VM_TIMEOUT` - Build timeout in seconds (default: 300)
+
+Example VM configuration:
+```python
+VMS = [
+    {
+        'name': 'win10-build-01',
+        'ip': '192.168.122.201',
+        'snapshot': 'build'
+    },
+    {
+        'name': 'win10-build-02',
+        'ip': '192.168.122.202',
+        'snapshot': 'build'
+    },
+]
+```
+
+## Troubleshooting
+
+### Build agent can't connect to ES
+- Verify ES is running on correct host/port
+- Check firewall rules allow connections from VM network
+- Verify token matches `settings.json`
+
+### Monitor can't classify reports
+- Check classifier and tokenizer paths are correct
+- Verify signatures list matches training data
+- Ensure CUDA/GPU available or CPU fallback works
+
+### VMs not resetting
+- Check VM provider (vmware/libvirt) matches config
+- Verify snapshot names exist on VMs
+- Check VM management permissions (libvirt group, sudo, etc.)
+
+### Classification takes too long
+- Use GPU if available (monitor will detect automatically)
+- Reduce `max_sequence_length` if reports are truncated anyway
+- Consider batch processing multiple candidates (future work)
