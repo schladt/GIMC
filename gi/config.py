@@ -12,3 +12,26 @@ DATA_PATH = settings['data_path']
 CLASSIFIER_MODEL_PATH = os.path.join(DATA_PATH, 'classifier', 'model_data')
 CLASSIFIER_PATH = os.path.join(CLASSIFIER_MODEL_PATH, 'cnn4bsi_checkpoint.pth')
 TOKENIZER_PATH = os.path.join(CLASSIFIER_MODEL_PATH, 'mal_reformer')
+
+class Config(object):
+    SQLALCHEMY_DATABASE_URI = settings['sqlalchemy_database_uri']
+    SECRET_TOKEN = settings['sandbox_token']
+    DATA_PATH = settings['data_path']
+    SANDBOX_TOKEN = settings['sandbox_token']
+    SANDBOX_URL = settings['sandbox_url']
+    
+    # Build VM Configuration
+    VM_PROVIDER = 'libvirt'
+    VMS = [
+        {
+            'name': 'win10-build-01',
+            'ip': '192.168.122.201',
+            'snapshot': 'build'
+        },
+        {
+            'name': 'win10-build-02',
+            'ip': '192.168.122.202',
+            'snapshot': 'build'
+        },
+    ]
+    VM_TIMEOUT = 300  # 5 minutes for build timeout

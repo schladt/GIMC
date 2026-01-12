@@ -5,16 +5,34 @@ Evaluation Server for GI
 - DO NOT USE THIS IN PRODUCTION
 """
 
+import base64
+import hashlib
 import os
 import logging
 import subprocess
 import json
 import shutil
+import sys
 import requests
 import re
+import threading
+import asyncio
 
-from flask import Flask, jsonify, request
-from config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL
+from flask import Flask, jsonify, request, make_response
+from flask_httpauth import HTTPTokenAuth
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL, Config
+from models import Base, Candidate, Prototypes, Ingredient
+
+###################################
+# Configuration and Setup
+###################################
+
+# Load settings from settings.json
+settings_file = '../settings.json'
+with open(settings_file) as f:
+    settings = json.load(f)
 
 # set up logging
 logging.basicConfig(
@@ -23,172 +41,308 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
+auth = HTTPTokenAuth(scheme='Bearer')
+
+# Database setup
+DATABASE_URL = settings['sqlalchemy_database_uri']
+engine = create_engine(DATABASE_URL, echo=False)
+Session = sessionmaker(bind=engine)
+
+@auth.verify_token
+def verify_token(token):
+    return token == settings['sandbox_token']
+
+def init_db():
+    """Initialize database tables"""
+    Base.metadata.create_all(engine)
+    logging.info("Database tables created successfully")
+
+###################################
+# API Endpoints
+###################################
+
+@app.route('/testauth', methods=['POST', 'GET'])
+@auth.login_required
+def testauth():
+    """
+    Test authentication endpoint
+    """
+    return jsonify({'status': 'success', 'message': 'Authentication successful'}), 200
 
 @app.route('/submit', methods=['POST'])
+@auth.login_required
 def submit():
     """
     Endpoint to submit code to server for evaluation
-    - Actually it's the only endpoint
     """
-    # ensure file is the request
-    if 'file' not in request.files:
-        return jsonify({"message": "no file part"}), 400
+    # check to see if 'code' is in the request
+    if 'code' not in request.json:
+        return jsonify({'status': 'error', 'message': 'No code provided'}), 400
     
-    # get the file
-    file = request.files['file']
-
-    # ensure the file has a name
-    if file.filename == '':
-        return jsonify({"message": "no selected file"}), 400
+    # get code
+    code = request.json['code']
     
-    # create random tmp dir if not exist
-    tmp_dir = os.urandom(8).hex()
-    tmp_dir = f'tmp_{tmp_dir}'
-    if not os.path.exists(tmp_dir):
-        os.makedirs(tmp_dir)
-
-    # write the file to disk
-    filepath = os.path.join(tmp_dir, file.filename)
-    file.save(filepath)
-
-    # compile the code
-    outfilepath = os.path.join(tmp_dir, 'proto.dll')            
-    p = subprocess.Popen(['gcc.exe', '-Wall', '-shared', '-o', outfilepath, filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    (out, err) = p.communicate()
-    if p.returncode != 0:
-        logging.debug(f"Error compiling code in {filepath}")
-        out = out.decode("utf-8")   
-        err = err.decode("utf-8")
-        logging.debug(out)
-        logging.debug(err)
-
-        # Use regular expressions to find all errors and warnings
-        errors = re.findall("error:", err)
-        warnings = re.findall("warning:", err)
-        compile_errors = {
-            "errors": len(errors),
-            "warnings": len(warnings)
-        }
-
-        shutil.rmtree(tmp_dir)
-        return jsonify({
-            "message": "error compiling code",
-            "compile_errors": compile_errors           
-        }), 200
-
-    # run the unit tests
-    logging.info("Running unit tests in {}".format(UNIT_TEST_FILE))
-    p = subprocess.Popen(['python', UNIT_TEST_FILE, outfilepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    (out, _) = p.communicate()
-    
-    # check for errors in subprocess, if so, log filename and continue
-    if p.returncode != 0:
-        logging.error(f"Error in unit test {UNIT_TEST_FILE} - {outfilepath}")
-        logging.error(out)
-        
-        shutil.rmtree(tmp_dir)
-        return jsonify({"message": "error running unit tests"}), 200
-
-    # Decode output as json
-    try: 
-        out = json.loads(out)
-        num_failures = out["num_failures"]
-        num_errors = out["num_errors"]
-        num_tests = out["num_tests"]
-    except:
-        logging.error(f"Error decoding json in unit test {UNIT_TEST_FILE} - {outfilepath}")
-
-        shutil.rmtree(tmp_dir)
-        return jsonify({"message": "error running unit tests"}), 200
-
-    # recompile and submit to sandbox
-    exefilepath = os.path.join(tmp_dir, 'proto.exe')
-    p = subprocess.Popen(['gcc.exe', '-o', exefilepath, filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    (out, err) = p.communicate()
-    if p.returncode != 0:
-        logging.error(f"error recompiling code as exe in {filepath}")
-        out = out.decode("utf-8")
-        err = err.decode("utf-8")
-        logging.error(out)
-        logging.error(err)
-
-        shutil.rmtree(tmp_dir)
-        return jsonify({
-            "message": "error recompiling code as exe",
-            "unit_test_results": {
-                "num_failures": num_failures,
-                "num_errors": num_errors,
-                "num_tests": num_tests
-            }   }), 200
-
-    # check if sandbox classificaiton is needed
-    json_data = json.loads(request.form['json_data']) 
-    if json_data['sandbox'] == False:
-        logging.info("Skipping sandbox classification")
-        
-        shutil.rmtree(tmp_dir)
-        return jsonify({
-            "message": "successfully compiled and ran unit tests",
-            "unit_test_results": {
-                "num_failures": num_failures,
-                "num_errors": num_errors,
-                "num_tests": num_tests
-            }           
-        }), 200
-
-    # submit to sandbox
-    logging.info("Submitting to sandbox")
-
-    files = {
-        'file': exefilepath
-    }
-    headers = {
-        'Authorization': f'Bearer {SANDBOX_TOKEN}'
-    }
-    data = {
-        'analyze': 'true',
-        'tags': f'disposition=genome'
-    }
+    # check if code is base64 encoded
     try:
-        r = requests.post(SANDBOX_URL + "/submit/sample", files=files, headers=headers, data=data)
-    except requests.exceptions.RequestException as e:
-        logging.error(f"error submitting to sandbox")
-        
-        shutil.rmtree(tmp_dir)
-        return jsonify({
-            "message": "error submitting to sandbox",
-            "unit_test_results": {
-                "num_failures": num_failures,
-                "num_errors": num_errors,
-                "num_tests": num_tests
-            }           
-        }), 200
-    if r.status_code != 200:
-        logging.error(f"error submitting to sandbox")
-        
-        shutil.rmtree(tmp_dir)
-        return jsonify({
-            "message": "error submitting to sandbox",
-            "unit_test_results": {
-                "num_failures": num_failures,
-                "num_errors": num_errors,
-                "num_tests": num_tests
-            }           
-        }), 200
+        decoded_code = base64.b64decode(code).decode('utf-8')
+    except Exception as e:
+        decoded_code = code  # assume it's plain text if decoding fails
+    
+    # take sha256 hash of the code
+    code_hash = hashlib.sha256(decoded_code.encode('utf-8')).hexdigest()
+
+    # base64 encode the code again to store
+    encoded_code = base64.b64encode(decoded_code.encode('utf-8')).decode('utf-8')
+
+    # create a new database session
+    session = Session()
+    # check if candidate already exists
+    existing_candidate = session.query(Candidate).filter_by(hash=code_hash).first()
+    if existing_candidate:
+        session.close()
+        return jsonify({'status': 'error', 'message': 'Code already submitted'}), 400
+    # create new candidate entry
+    new_candidate = Candidate(
+        hash=code_hash,
+        code=encoded_code,
+        status=0
+    )
+    session.add(new_candidate)
+    session.commit()
+    session.close()
+    return jsonify({'status': 'success', 'message': 'Code received for evaluation'}), 200
+
+@app.route('/vm/checkin', methods=['GET'])
+@auth.login_required
+def vm_checkin():
+    """ Endpoint for build VMs to check in with server and receive new build tasks if available """
+    
+    # get IP address of VM
+    ip = request.remote_addr
+
+    # get VM name from the configuration file
+    vm_name = None
+    for vm in Config.VMS:
+        if ip == vm['ip']:
+            vm_name = vm['name']
+
+    if not vm_name:
+        logging.error("requesting IP address not registered in configuration file")
+        return jsonify({"error": "requesting IP address not registered in configuration file"}), 400
+
+    logging.info(f"Build VM {vm_name} checking in")
+
+    # create a new database session
+    session = Session()
+    
+    # check if build tasks are available (status=0 means pending)
+    candidate = session.query(Candidate).filter_by(status=0).first()
+
+    # if no build tasks are available, return empty response
+    if not candidate:
+        session.close()
+        return jsonify({"message": "no build tasks available"}), 200
+    
+    # if build tasks are available, update database
+    candidate.status = 1  # status=1 means building
+    candidate.build_vm = vm_name
+    session.commit()
+    
+    # send base64 encoded code to VM
+    encoded_code = candidate.code
+    session.close()
+    
+    # send code to VM as base64 encoded text in response body
+    response = make_response(encoded_code)
+    response.headers['Content-Type'] = 'text/plain'
+    response.headers['X-Message'] = "code attached"
+    response.headers['X-Candidate-Hash'] = candidate.hash
+    logging.info(f"Build VM {vm_name} received build task for candidate {candidate.hash}")
+    return response
+
+@app.route('/vm/update', methods=['POST'])
+@auth.login_required
+def vm_update():
+    """ Endpoint for build VMs to update candidate status and fitness values """
+    
+    # get IP address of VM
+    ip = request.remote_addr
+
+    # get VM name from the configuration file
+    vm_name = None
+    for vm in Config.VMS:
+        if ip == vm['ip']:
+            vm_name = vm['name']
+
+    if not vm_name:
+        logging.error("requesting IP address not registered in configuration file")
+        return jsonify({"error": "requesting IP address not registered in configuration file"}), 400
+    
+    # check for candidate hash in request
+    if 'hash' not in request.json:
+        logging.error("no candidate hash in request")
+        threading.Thread(target=revert_vm, args=(vm_name, Config)).start()
+        return jsonify({"error": "no candidate hash in request"}), 400
+    
+    candidate_hash = request.json['hash']
+    
+    # create a new database session
+    session = Session()
+    
+    # get candidate from database
+    candidate = session.query(Candidate).filter_by(hash=candidate_hash).first()
+    if not candidate:
+        session.close()
+        logging.error(f"candidate {candidate_hash} not found")
+        threading.Thread(target=revert_vm, args=(vm_name, Config)).start()
+        return jsonify({"error": "candidate not found"}), 404
+    
+    # update fields if provided
+    updated_fields = []
+    if 'status' in request.json:
+        candidate.status = request.json['status']
+        updated_fields.append('status')
+    if 'F1' in request.json:
+        candidate.F1 = request.json['F1']
+        updated_fields.append('F1')
+    if 'F2' in request.json:
+        candidate.F2 = request.json['F2']
+        updated_fields.append('F2')
+    if 'F3' in request.json:
+        candidate.F3 = request.json['F3']
+        updated_fields.append('F3')
+    if 'analysis_id' in request.json:
+        candidate.analysis_id = request.json['analysis_id']
+        updated_fields.append('analysis_id')
+    if 'error_message' in request.json:
+        candidate.error_message = request.json['error_message']
+        updated_fields.append('error_message')
+    
+    session.commit()
+    session.close()
+    
+    logging.info(f"VM {vm_name} updated candidate {candidate_hash}: {', '.join(updated_fields)}")
+    
+    # if status is complete (3) or error (4), revert VM
+    if 'status' in request.json and request.json['status'] in [3, 4]:
+        threading.Thread(target=revert_vm, args=(vm_name, Config)).start()
+    
+    return jsonify({"message": "candidate updated successfully"}), 200
+
+@app.route('/info/<hash>', methods=['GET'])
+@auth.login_required
+def info(hash):
+    """ Endpoint to get candidate information by hash """
+    
+    # check if returncode parameter is set
+    return_code = request.args.get('returncode', 'false').lower() == 'true'
+    
+    # create a new database session
+    session = Session()
+    
+    # get candidate from database
+    candidate = session.query(Candidate).filter_by(hash=hash).first()
+    if not candidate:
+        session.close()
+        return jsonify({"error": "candidate not found"}), 404
+    
+    # build response
+    response_data = {
+        'hash': candidate.hash,
+        'status': candidate.status,
+        'F1': candidate.F1,
+        'F2': candidate.F2,
+        'F3': candidate.F3,
+        'analysis_id': candidate.analysis_id,
+        'date_added': candidate.date_added.isoformat() if candidate.date_added else None,
+        'date_updated': candidate.date_updated.isoformat() if candidate.date_updated else None,
+        'error_message': candidate.error_message,
+        'build_vm': candidate.build_vm
+    }
+    
+    # include code if requested
+    if return_code:
+        response_data['code'] = candidate.code
+    
+    session.close()
+    return jsonify(response_data), 200
+
+@app.route('/reanalyze/<hash>', methods=['GET'])
+@auth.login_required
+def reanalyze(hash):
+    """ Endpoint to reset candidate status to pending for reanalysis """
+    
+    # create a new database session
+    session = Session()
+    
+    # get candidate from database
+    candidate = session.query(Candidate).filter_by(hash=hash).first()
+    if not candidate:
+        session.close()
+        return jsonify({"error": "candidate not found"}), 404
+    
+    # reset status to pending
+    candidate.status = 0
+    candidate.build_vm = None
+    candidate.error_message = None
+    session.commit()
+    session.close()
+    
+    logging.info(f"Candidate {hash} reset to pending for reanalysis")
+    return jsonify({"message": "candidate reset to pending"}), 200
+
+def revert_vm(vm_name, config):
+    """ Revert VM to snapshot """
+    from sandbox.utils.monitor import vmware_linux_reset_snapshot, vmware_linux_start_vm, vmware_linux_get_running_vms
+    from sandbox.utils.monitor import virsh_reset_snapshot, virsh_start_vm, virsh_get_running_vms
+
+    # read config for VM provider
+    vm_provider = config.VM_PROVIDER
+
+    if vm_provider == 'vmware':
+        reset_snapshot = vmware_linux_reset_snapshot
+        start_vm = vmware_linux_start_vm
+        get_running_vms = vmware_linux_get_running_vms
+    elif vm_provider == 'libvirt':
+        reset_snapshot = virsh_reset_snapshot
+        start_vm = virsh_start_vm
+        get_running_vms = virsh_get_running_vms
     else:
-        logging.info(r.text)
-        logging.info("submitted to sandbox")
-        
-        shutil.rmtree(tmp_dir)
-        return jsonify({
-            "message": "successfully submitted to sandbox",
-            "unit_test_results": {
-                "num_failures": num_failures,
-                "num_errors": num_errors,
-                "num_tests": num_tests
-            },
-            "sandbox_hashes": r.json()['hashes']         
-        }), 200
+        logging.error(f"unknown VM provider: {vm_provider}")
+        return
+
+    # get snapshot name from configuration
+    snapshot = None
+    for vm in config.VMS:
+        if vm['name'] == vm_name:
+            snapshot = vm['snapshot']
+            break
+    if not snapshot:
+        logging.error(f"snapshot name not found for VM: {vm_name}")
+        return
+
+    # revert VM to snapshot
+    if not asyncio.run(reset_snapshot(vm_name, snapshot)):
+        logging.error(f"error reverting VM: {vm_name} to snapshot: {snapshot}")
+        return
+
+    logging.info(f"reverted VM: {vm_name} to snapshot {snapshot}")
+    return
+
+
+###################################
+# Main Entry Point
+###################################
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, threaded=True)
+    # get the first argument
+    if len(sys.argv) > 2:
+        interface = sys.argv[1]
+        port = sys.argv[2]
+    else:
+        # exit
+        print("Usage: python run.py <interface address> <port>")
+        sys.exit(1)
+    # Initialize database on startup
+    init_db()
+    app.run(host=interface, port=int(port), debug=True, threaded=True)

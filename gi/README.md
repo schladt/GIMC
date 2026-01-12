@@ -13,7 +13,6 @@ Central orchestrator that manages candidate tracking and coordinates all other c
 - `POST /submit` - Accepts C code, creates candidate record, returns hash
 - `POST /update` - Receives fitness/status updates from build agents and monitor
 - `GET /info/<hash>` - Returns candidate record for given hash
-- `POST /reset/<vm_id>` - Triggers VM snapshot revert
 
 ### 2. Candidates Database Table
 Tracks status and fitness scores for each submitted code candidate.
