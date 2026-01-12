@@ -61,7 +61,7 @@ def submit_analysis(hash):
     db.session.add(analysis)
     db.session.commit()
 
-    return {"message": "analysis successfully uploaded"}, 200
+    return {"message": "analysis successfully uploaded", "analysis_id": analysis.id}, 200
 
 @bp.route('/submit/sample', methods=['POST'])
 @auth.login_required
@@ -196,7 +196,9 @@ def submit_sample():
         response = submit_analysis(file_hashes['sha256'])
         if response[1] != 200:
             return response
-        return {"message": "analysis successfully uploaded", 'hashes': file_hashes}, 200
+        # Extract analysis_id from response
+        analysis_id = response[0].get('analysis_id')
+        return {"message": "analysis successfully uploaded", 'hashes': file_hashes, 'analysis_id': analysis_id}, 200
 
     return {"message": "sample successfully uploaded", 'hashes': file_hashes}, 200
 
