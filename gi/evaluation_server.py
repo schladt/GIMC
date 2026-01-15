@@ -218,6 +218,14 @@ def vm_update():
         candidate.error_message = request.json['error_message']
         updated_fields.append('error_message')
     
+    # If status is complete (3) or error (4) and F3 is not provided and still NULL, set it to 0
+    # This handles cases where sandbox analysis doesn't occur (build errors, testing errors, or sandbox offline)
+    if 'status' in request.json and request.json['status'] in [3, 4]:
+        if 'F3' not in request.json and candidate.F3 is None:
+            candidate.F3 = 0
+            updated_fields.append('F3 (auto-set to 0)')
+            logging.info(f"Auto-setting F3 to 0 for candidate {candidate_hash} due to status {request.json['status']} without sandbox analysis")
+    
     session.commit()
     session.close()
     
