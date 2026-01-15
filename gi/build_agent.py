@@ -23,6 +23,7 @@ import time
 import re
 import requests
 import argparse
+import importlib.util
 from pathlib import Path
 
 ###################################
@@ -220,18 +221,12 @@ def update_candidate(candidate_hash, **kwargs):
 def clean_build_directory():
     """Clean and recreate build directory"""
     if os.path.exists(BUILD_DIR):
-        # Remove all files except Makefile and unit tests
-        for item in os.listdir(BUILD_DIR):
-            if item.lower() != 'makefile':
-                item_path = os.path.join(BUILD_DIR, item)
-                try:
-                    if os.path.isfile(item_path):
-                        os.remove(item_path)
-                    elif os.path.isdir(item_path):
-                        import shutil
-                        shutil.rmtree(item_path)
-                except Exception as e:
-                    logging.warning(f"Could not remove {item_path}: {e}")
+        # use make clean
+        try:
+            logging.info(f"Cleaning build directory: {BUILD_DIR}")
+            subprocess.run(['make', 'clean', '-f', MAKEFILE_PATH], cwd=BUILD_DIR)
+        except Exception as e:
+            logging.warning(f"Failed to clean build directory using make clean: {e}")
     else:
         os.makedirs(BUILD_DIR, exist_ok=True)
 
@@ -322,6 +317,7 @@ def compile_code():
 def run_unit_tests(binary_name):
     """
     Run unit tests and compute F2 fitness from pass rate.
+    Imports and calls the unit test run() function directly.
     
     Args:
         binary_name: Name of the compiled binary
@@ -333,41 +329,29 @@ def run_unit_tests(binary_name):
         # Get absolute path to binary
         binary_path = os.path.abspath(os.path.join(BUILD_DIR, binary_name))
         
-        # Run unit tests
-        result = subprocess.run(
-            ['python', UNIT_TEST_PATH, binary_path],
-            capture_output=True,
-            text=True,
-            timeout=BUILD_TIMEOUT
-        )
+        # Dynamically import the unit test module
+        spec = importlib.util.spec_from_file_location("unit_test", UNIT_TEST_PATH)
+        unit_test_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(unit_test_module)
         
-        # Parse JSON output from unit tests
-        try:
-            # Look for JSON in output
-            output = result.stdout
-            test_results = json.loads(output.strip())
-            
-            num_tests = test_results.get('num_tests', 0)
-            num_failures = test_results.get('num_failures', 0)
-            num_errors = test_results.get('num_errors', 0)
-            
-            # Calculate F2: pass rate
-            if num_tests > 0:
-                num_passed = num_tests - num_failures - num_errors
-                F2 = num_passed / num_tests
-            else:
-                F2 = 0.0
-            
-            logging.info(f"Unit test results: {num_passed}/{num_tests} passed, F2={F2:.4f}")
-            return F2, None
+        # Call the run() function directly
+        test_results = unit_test_module.run(binary_path)
         
-        except json.JSONDecodeError:
-            logging.error(f"Could not parse unit test output: {result.stdout}")
-            return 0.0, "Failed to parse unit test results"
-    
-    except subprocess.TimeoutExpired:
-        logging.error("Unit tests timed out")
-        return 0.0, "Unit tests timed out"
+        # Extract results from dict
+        num_tests = test_results.get('num_tests', 0)
+        num_failures = test_results.get('num_failures', 0)
+        num_errors = test_results.get('num_errors', 0)
+        
+        # Calculate F2: pass rate
+        if num_tests > 0:
+            num_passed = num_tests - num_failures - num_errors
+            F2 = num_passed / num_tests
+        else:
+            F2 = 0.0
+        
+        logging.info(f"Unit test results: {num_passed}/{num_tests} passed, F2={F2:.4f}")
+        logging.debug(f"Test details: {test_results.get('details', {})}")
+        return F2, None
     
     except Exception as e:
         logging.error(f"Error running unit tests: {e}")
@@ -501,7 +485,8 @@ def process_build_task(candidate_hash, encoded_code):
                 status=3,  # complete
                 error_message="Failed to submit to sandbox"
             )
-    
+
+
     except Exception as e:
         logging.error(f"Error processing build task: {e}")
         update_candidate(
