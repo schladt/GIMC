@@ -8,21 +8,19 @@ The GIMC Sandbox is a dynamic malware analysis system designed to analyze Window
 
 ### Core Components
 
-- **Flask Web API**: RESTful API for sample submission and analysis management
-- **VM Management**: Automated virtual machine provisioning and monitoring
-- **Analysis Engine**: Multi-stage analysis including static and dynamic components
+- **Flask Web API**: RESTful API for sample submission and analysis management (sandbox_server.py)
+- **VM Management**: Automated virtual machine provisioning and monitoring (utils/monitor.py)
+- **Analysis Engine**: Multi-stage analysis including static and dynamic components (agent.py)
 - **Data Collection**: Comprehensive system and network monitoring
 - **Reporting**: Structured analysis results with multiple output formats
+- **Database**: SQLAlchemy-based data persistence with automatic table creation
 
 ### Key Files
 
 #### Web Application
-- `run.py`: Flask application entry point
-- `app/`: Main Flask application package
-  - `__init__.py`: App factory and initialization
-  - `models.py`: Database models (Sample, Analysis, Tag, User)
-  - `main/routes.py`: API endpoints and request handlers
-- `config.py`: Configuration management and VM definitions
+- `sandbox_server.py`: Main Flask application with all routes and logic
+- `models.py`: Database models using SQLAlchemy (Sample, Analysis, Tag, User)
+- `config.py`: Configuration management and VM definitions (loads from settings.json)
 
 #### Analysis Components
 - `agent.py`: Main analysis agent that runs inside VMs (564 lines)
@@ -35,9 +33,9 @@ The GIMC Sandbox is a dynamic malware analysis system designed to analyze Window
 - `collect_test.py`: Test harness for monitoring functionality
 
 #### VM Management
-- `utils/monitor.py`: VM lifecycle management (libvirt/VMware support, extensible)
+- `utils/monitor.py`: VM lifecycle management and timeout monitoring (libvirt/VMware support)
 - `utils/vm-destroy.py`: Emergency VM shutdown utility
-- `config.py`: VM pool configuration (references settings.json for VM definitions)
+- `utils/kvm_ext_snapshot.sh`: External snapshot management for KVM/libvirt VMs
 
 #### Utilities
 - `decrypt_tool.py`: Standalone file decryption utility
@@ -398,11 +396,10 @@ The system tracks analysis progress through status codes:
 
 ### Python Requirements (Host)
 ```
-Flask
-SQLAlchemy
-cryptography
-requests
-asyncio
+Flask>=2.0.0
+SQLAlchemy>=1.4.0
+cryptography>=41.0.0
+requests>=2.31.0
 ```
 
 ### Windows Guest Requirements
@@ -514,13 +511,25 @@ curl -X POST \
 #### Starting the Sandbox Server
 ```bash
 # Start on all interfaces, port 5000
-python run.py 0.0.0.0 5000
+python sandbox_server.py 0.0.0.0 5000
 
 # Start on localhost only
-python run.py 127.0.0.1 5000
+python sandbox_server.py 127.0.0.1 5000
 
 # Custom port
-python run.py 0.0.0.0 8080
+python sandbox_server.py 0.0.0.0 8080
+```
+
+#### Running VM Monitor
+```bash
+# Monitor VMs and handle timeouts (run from sandbox directory)
+python -m utils.monitor
+```
+
+#### Emergency VM Shutdown
+```bash
+# Force shutdown all VMs (run from sandbox directory)
+python -m utils.vm-destroy
 ```
 
 #### Viewing Reports
@@ -582,7 +591,9 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ### Database
 - SQLite/PostgreSQL support via SQLAlchemy
+- Plain SQLAlchemy ORM (not Flask-SQLAlchemy)
 - Models: Sample, Analysis, Tag, User relationships
+- Tables auto-created on server startup
 
 ### VM Settings
 ```python

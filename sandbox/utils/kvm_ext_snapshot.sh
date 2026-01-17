@@ -181,22 +181,41 @@ if [[ ${#diskspec_args[@]} -eq 0 ]]; then
   exit 1
 fi
 
-memfile="${BASE}/mem"
-memspec="snapshot=external,file=${memfile}"
+# Check if the domain is running
+vm_state=$(virsh domstate "$DOMAIN")
 
-echo
-echo "Memory snapshot file: ${memfile}"
-echo
+if [[ "$vm_state" == "running" ]]; then
+  # Live snapshot with memory
+  memfile="${BASE}/mem"
+  memspec="snapshot=external,file=${memfile}"
 
-# Take the live external snapshot (RAM + disks)
-virsh snapshot-create-as \
-  --domain "$DOMAIN" \
-  --name "$SNAPNAME" \
-  --description "External snapshot '$SNAPNAME' for '$DOMAIN'" \
-  --live \
-  --memspec "$memspec" \
-  "${diskspec_args[@]}" \
-  --atomic
+  echo
+  echo "VM is running - creating live snapshot with memory"
+  echo "Memory snapshot file: ${memfile}"
+  echo
+
+  virsh snapshot-create-as \
+    --domain "$DOMAIN" \
+    --name "$SNAPNAME" \
+    --description "External live snapshot '$SNAPNAME' for '$DOMAIN'" \
+    --live \
+    --memspec "$memspec" \
+    "${diskspec_args[@]}" \
+    --atomic
+else
+  # Disk-only snapshot (VM is shut off or paused)
+  echo
+  echo "VM is $vm_state - creating disk-only snapshot"
+  echo
+
+  virsh snapshot-create-as \
+    --domain "$DOMAIN" \
+    --name "$SNAPNAME" \
+    --description "External disk-only snapshot '$SNAPNAME' for '$DOMAIN'" \
+    --disk-only \
+    "${diskspec_args[@]}" \
+    --atomic
+fi
 
 echo
 echo "Snapshot '$SNAPNAME' for domain '$DOMAIN' created successfully."

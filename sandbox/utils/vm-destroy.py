@@ -26,12 +26,15 @@ async def libvirt_shutdown_vm(vm):
     return True
 
 async def main():
-    from app.models import Analysis
+    import sys
+    import os
+    
+    # Add parent directory to path for imports
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    
     from config import Config
-    from app import create_app
 
-    config = Config() 
-    app = create_app()
+    config = Config()
 
     # check if vm manager is libvirt
     if config.VM_PROVIDER.strip().lower() == 'libvirt':
