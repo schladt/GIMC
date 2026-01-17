@@ -170,6 +170,7 @@ def check_for_build_task():
                 return candidate_hash, encoded_code
             else:
                 # No tasks available
+                logging.debug("No build tasks available")
                 return None, None
         else:
             logging.error(f"Error checking for build tasks: {response.status_code} - {response.text}")
