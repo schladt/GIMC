@@ -18,6 +18,9 @@ import re
 import threading
 import asyncio
 
+# Add project root to Python path for sandbox imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from flask import Flask, jsonify, request, make_response
 from flask_httpauth import HTTPTokenAuth
 from sqlalchemy import create_engine
