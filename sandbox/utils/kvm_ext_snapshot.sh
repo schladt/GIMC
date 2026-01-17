@@ -1,30 +1,137 @@
 #!/usr/bin/env bash
 # kvm_ext_snapshot.sh
 #
-# Create a live *external* snapshot (RAM + disk overlays) for a libvirt/KVM VM.
+# Manage live *external* snapshots (RAM + disk overlays) for libvirt/KVM VMs.
 # Files go under: /var/lib/libvirt/snapshots/<vm>/<snapshot>/
 #
 # Usage:
-#   sudo ./kvm_ext_snapshot.sh <vm-name> <snapshot-name>
-#
-# Snapshot command cheetsheet:
-#   List:    sudo virsh snapshot-list <vm-name>
-#   Restore: sudo virsh snapshot-revert <vm-name> <snapshot-name>
-#   Delete:  sudo virsh snapshot-delete --metadata <vm-name> <snapshot-name>
-#            sudo rm -rf /var/lib/libvirt/snapshots/<vm-name>/<snapshot-name>
+#   sudo ./kvm_ext_snapshot.sh --create <vm-name> <snapshot-name>
+#   sudo ./kvm_ext_snapshot.sh --list <vm-name>
+#   sudo ./kvm_ext_snapshot.sh --restore <vm-name> <snapshot-name>
+#   sudo ./kvm_ext_snapshot.sh --delete <vm-name> <snapshot-name>
 
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 <vm-name> <snapshot-name>"
-  exit 1
-fi
-
-DOMAIN="$1"
-SNAPNAME="$2"
-
 # Where to store snapshots
 SNAP_ROOT="/var/lib/libvirt/snapshots"
+
+show_usage() {
+  cat << EOF
+Usage: $0 [OPERATION] <vm-name> [snapshot-name]
+
+Operations:
+  --create <vm-name> <snapshot-name>    Create a new external snapshot
+  --list <vm-name>                      List all snapshots for a VM
+  --restore <vm-name> <snapshot-name>   Restore VM to a snapshot
+  --delete <vm-name> <snapshot-name>    Delete a snapshot
+
+Default operation (no flag): --create
+EOF
+  exit 1
+}
+
+list_snapshots() {
+  local domain="$1"
+  echo "Snapshots for domain '$domain':"
+  virsh snapshot-list "$domain"
+}
+
+restore_snapshot() {
+  local domain="$1"
+  local snapname="$2"
+  echo "Restoring domain '$domain' to snapshot '$snapname'..."
+  virsh snapshot-revert "$domain" "$snapname"
+  echo "Snapshot restored successfully."
+}
+
+delete_snapshot() {
+  local domain="$1"
+  local snapname="$2"
+  local snap_dir="${SNAP_ROOT}/${domain}/${snapname}"
+  
+  echo "Deleting snapshot '$snapname' for domain '$domain'..."
+  
+  # Delete metadata from libvirt
+  virsh snapshot-delete --metadata "$domain" "$snapname"
+  
+  # Delete snapshot files if they exist
+  if [[ -d "$snap_dir" ]]; then
+    echo "Removing snapshot files: $snap_dir"
+    rm -rf "$snap_dir"
+  fi
+  
+  echo "Snapshot deleted successfully."
+}
+
+# Parse operation
+OPERATION="create"
+if [[ $# -gt 0 ]] && [[ "$1" == --* ]]; then
+  case "$1" in
+    --create)
+      OPERATION="create"
+      shift
+      ;;
+    --list)
+      OPERATION="list"
+      shift
+      ;;
+    --restore)
+      OPERATION="restore"
+      shift
+      ;;
+    --delete)
+      OPERATION="delete"
+      shift
+      ;;
+    *)
+      echo "Error: Unknown operation '$1'"
+      show_usage
+      ;;
+  esac
+fi
+
+# Validate arguments based on operation
+case "$OPERATION" in
+  list)
+    if [[ $# -ne 1 ]]; then
+      echo "Error: --list requires <vm-name>"
+      show_usage
+    fi
+    DOMAIN="$1"
+    list_snapshots "$DOMAIN"
+    exit 0
+    ;;
+  restore)
+    if [[ $# -ne 2 ]]; then
+      echo "Error: --restore requires <vm-name> <snapshot-name>"
+      show_usage
+    fi
+    DOMAIN="$1"
+    SNAPNAME="$2"
+    restore_snapshot "$DOMAIN" "$SNAPNAME"
+    exit 0
+    ;;
+  delete)
+    if [[ $# -ne 2 ]]; then
+      echo "Error: --delete requires <vm-name> <snapshot-name>"
+      show_usage
+    fi
+    DOMAIN="$1"
+    SNAPNAME="$2"
+    delete_snapshot "$DOMAIN" "$SNAPNAME"
+    exit 0
+    ;;
+  create)
+    if [[ $# -ne 2 ]]; then
+      echo "Error: --create requires <vm-name> <snapshot-name>"
+      show_usage
+    fi
+    DOMAIN="$1"
+    SNAPNAME="$2"
+    ;;
+esac
+
+# Create snapshot (only for --create operation)
 BASE="${SNAP_ROOT}/${DOMAIN}/${SNAPNAME}"
 
 if [[ -e "$BASE" ]]; then
