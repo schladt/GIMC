@@ -100,17 +100,24 @@ def submit():
     # create a new database session
     session = Session()
     # check if candidate already exists
-    existing_candidate = session.query(Candidate).filter_by(hash=code_hash).first()
-    if existing_candidate:
-        session.close()
-        return jsonify({'status': 'error', 'message': 'Code already submitted'}), 400
-    # create new candidate entry
-    new_candidate = Candidate(
-        hash=code_hash,
-        code=encoded_code,
-        status=0
-    )
-    session.add(new_candidate)
+    candidate = session.query(Candidate).filter_by(hash=code_hash).first()
+    if candidate:
+        # reset status, fitness values, and other fields
+        candidate.status = 0
+        candidate.F1 = None
+        candidate.F2 = None
+        candidate.F3 = None
+        candidate.analysis_id = None
+        candidate.error_message = None
+        candidate.build_vm = None
+    else:
+        # create new candidate entry
+        candidate = Candidate(
+            hash=code_hash,
+            code=encoded_code,
+            status=0
+        )
+    session.add(candidate)
     session.commit()
     session.close()
     return jsonify({'status': 'success', 'message': 'Code received for evaluation'}), 200
