@@ -186,7 +186,8 @@ def update_candidate(candidate_hash, **kwargs):
     
     Args:
         candidate_hash: Hash of the candidate
-        **kwargs: Fields to update (status, F1, F2, F3, analysis_id, error_message)
+        **kwargs: Fields to update (status, F1, F2, F3, analysis_id, error_message, clean)
+                 clean: If True, signals ES that build agent cleaned up and VM doesn't need reset
     """
     try:
         headers = {
@@ -429,13 +430,16 @@ def process_build_task(candidate_hash, encoded_code):
     Args:
         candidate_hash: Hash of the candidate
         encoded_code: Base64 encoded source code
+    
+    Returns:
+        bool: True if VM needs reset (binary was submitted), False otherwise
     """
     try:
         # Check if Makefile exists
         if not os.path.exists(MAKEFILE_PATH):
             logging.error(f"Makefile not found at {MAKEFILE_PATH}")
-            update_candidate(candidate_hash, status=4, error_message="Makefile not configured")
-            return
+            update_candidate(candidate_hash, status=4, error_message="Makefile not configured", clean=True)
+            return False
         
         # Parse Makefile to get filenames
         source_file, output_file = parse_makefile(MAKEFILE_PATH)
@@ -445,22 +449,26 @@ def process_build_task(candidate_hash, encoded_code):
         
         # Save code to file
         if not save_code_to_file(encoded_code, source_file):
-            update_candidate(candidate_hash, status=4, error_message="Failed to save code to file")
-            return
+            update_candidate(candidate_hash, status=4, error_message="Failed to save code to file", clean=True)
+            return False
         
         # Compile code
         compile_success, F1, binary_name, compile_error = compile_code()
         
         if not compile_success:
-            # No binary produced - report F1 and complete
+            # No binary produced - report F1, complete, and clean up
             update_candidate(
                 candidate_hash,
                 status=3,  # complete
                 F1=F1,
                 F2=0.0,
-                error_message=compile_error
+                error_message=compile_error,
+                clean=True  # Signal ES that we're cleaning up
             )
-            return
+            # Clean up files
+            clean_build_directory()
+            logging.info("Compilation failed - cleaned up and ready for next task")
+            return False  # VM doesn't need reset
         
         # Binary produced - update F1 and continue
         update_candidate(candidate_hash, F1=F1)
@@ -479,13 +487,18 @@ def process_build_task(candidate_hash, encoded_code):
                 status=2,  # analyzing
                 analysis_id=analysis_id
             )
+            logging.info("Binary submitted to sandbox - VM will be reset")
         else:
-            # Failed to submit - mark as complete with error
+            # Failed to submit - mark as complete with error, but still reset VM
             update_candidate(
                 candidate_hash,
                 status=3,  # complete
                 error_message="Failed to submit to sandbox"
             )
+            logging.info("Sandbox submission failed but binary was compiled - VM will be reset")
+        
+        # VM needs reset because binary was successfully compiled
+        return True
 
 
     except Exception as e:
@@ -493,11 +506,14 @@ def process_build_task(candidate_hash, encoded_code):
         update_candidate(
             candidate_hash,
             status=4,  # error
-            error_message=f"Build error: {str(e)}"
+            error_message=f"Build error: {str(e)}",
+            clean=False  # Reset VM on error
         )
 
+        return True  # VM needs reset on error
+
 def main():
-    """Main build agent loop - processes one task then exits"""
+    """Main build agent loop - processes tasks until a binary is successfully compiled"""
     logging.info("Build agent starting...")
     logging.info(f"ES API URL: {ES_API_URL}")
     logging.info(f"Sandbox URL: {SANDBOX_URL}")
@@ -510,7 +526,9 @@ def main():
     # Note: Makefile and unit test file will be provided as configuration
     # The agent will check for their existence when processing each task
     
-    # Poll for one task, process it, then exit (VM will be reverted)
+    # Poll for tasks and process them
+    # Exit when a binary is successfully compiled (VM needs reset)
+    # If compilation fails (no binary), clean up and continue processing more tasks
     while True:
         try:
             # Check for build task
@@ -519,11 +537,16 @@ def main():
             if candidate_hash:
                 # Process build task
                 logging.info(f"Processing candidate: {candidate_hash}")
-                process_build_task(candidate_hash, encoded_code)
+                needs_vm_reset = process_build_task(candidate_hash, encoded_code)
                 logging.info(f"Finished processing candidate: {candidate_hash}")
-                # Exit after processing one task (VM will be reverted by ES)
-                logging.info("Build agent exiting after completing task")
-                break
+                
+                # Exit if binary was compiled (VM needs reset)
+                if needs_vm_reset:
+                    logging.info("Binary compiled - exiting for VM reset")
+                    break
+                else:
+                    logging.info("Compilation failed - continuing to next task")
+                    # Continue loop to fetch next task
             else:
                 # No tasks available - wait before polling again
                 logging.debug("No tasks available, waiting...")

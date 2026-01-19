@@ -221,6 +221,9 @@ def vm_update():
         candidate.error_message = request.json['error_message']
         updated_fields.append('error_message')
     
+    # Check if vm is clean (no vm revert needed)
+    vm_clean = request.json.get('clean', False)
+    
     # If status is complete (3) or error (4) and F3 is not provided and still NULL, set it to 0
     # This handles cases where sandbox analysis doesn't occur (build errors, testing errors, or sandbox offline)
     if 'status' in request.json and request.json['status'] in [3, 4]:
@@ -234,8 +237,8 @@ def vm_update():
     
     logging.info(f"VM {vm_name} updated candidate {candidate_hash}: {', '.join(updated_fields)}")
     
-    # if status is analyze (2), complete (3) or error (4), revert VM
-    if 'status' in request.json and request.json['status'] in [2, 3, 4]:
+    # revert VM if build agent is not clean
+    if not vm_clean:
         threading.Thread(target=revert_vm, args=(vm_name, Config)).start()
     
     return jsonify({"message": "candidate updated successfully"}), 200
