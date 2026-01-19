@@ -24,7 +24,7 @@ class Config(object):
     VM_PROVIDER = 'libvirt'
     VMS = [
         {
-            'name': 'win10-dev-01',
+            'name': 'win10',
             'ip': '192.168.122.100',
             'snapshot': 'build'
         },

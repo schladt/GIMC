@@ -237,8 +237,8 @@ def vm_update():
     
     logging.info(f"VM {vm_name} updated candidate {candidate_hash}: {', '.join(updated_fields)}")
     
-    # revert VM if build agent is not clean
-    if not vm_clean:
+    # revert VM if build agent is not clean on completion or error
+    if 'status' in request.json and request.json['status'] in [2, 3, 4] and not vm_clean:
         threading.Thread(target=revert_vm, args=(vm_name, Config)).start()
     
     return jsonify({"message": "candidate updated successfully"}), 200
