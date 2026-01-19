@@ -21,61 +21,61 @@ class Config(object):
         #     'ip': '192.168.122.100',
         #     'snapshot': 'analysis'
         # },
-        {
-            'name': 'win10-analysis-01', 
-            'ip': '192.168.122.101',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-02', 
-            'ip': '192.168.122.102',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-03', 
-            'ip': '192.168.122.103',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-04', 
-            'ip': '192.168.122.104',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-05', 
-            'ip': '192.168.122.105',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-06', 
-            'ip': '192.168.122.106',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-07', 
-            'ip': '192.168.122.107',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-08', 
-            'ip': '192.168.122.108',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-09', 
-            'ip': '192.168.122.109',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-10', 
-            'ip': '192.168.122.110',
-            'snapshot': 'analysis'
-        },
-        {
-            'name': 'win10-analysis-11', 
-            'ip': '192.168.122.111',
-            'snapshot': 'analysis'
-        },
+        # {
+        #     'name': 'win10-analysis-01', 
+        #     'ip': '192.168.122.101',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-02', 
+        #     'ip': '192.168.122.102',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-03', 
+        #     'ip': '192.168.122.103',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-04', 
+        #     'ip': '192.168.122.104',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-05', 
+        #     'ip': '192.168.122.105',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-06', 
+        #     'ip': '192.168.122.106',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-07', 
+        #     'ip': '192.168.122.107',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-08', 
+        #     'ip': '192.168.122.108',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-09', 
+        #     'ip': '192.168.122.109',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-10', 
+        #     'ip': '192.168.122.110',
+        #     'snapshot': 'analysis'
+        # },
+        # {
+        #     'name': 'win10-analysis-11', 
+        #     'ip': '192.168.122.111',
+        #     'snapshot': 'analysis'
+        # },
         {
             'name': 'win10-analysis-12', 
             'ip': '192.168.122.112',

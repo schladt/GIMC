@@ -91,7 +91,7 @@ def load_model_and_tokenizer(classifier_path, tokenizer_path, vocab_size, embed_
     
     # Load checkpoint
     checkpoint = torch.load(classifier_path, map_location=DEVICE)
-    MODEL.load_state_dict(checkpoint['model_state_dict'])
+    MODEL.load_state_dict(checkpoint['model_states'][-1])
     MODEL.to(DEVICE)
     MODEL.eval()
     
@@ -122,10 +122,20 @@ def init_databases():
 # Report Preprocessing
 ###################################
 
+def mal_tokenizer(line):
+    """
+    Tokenize a line of text
+    """
+    line = line.lower()
+    line = line.replace(',', ' ')
+    line = line.replace('\\', ' ')
+    line = line.replace('\\\\', ' ')
+    return line.split()
+
 def preprocess_report(report_text):
     """
     Preprocess a single report for classification.
-    Based on get_mal_data but for a single report in memory.
+    Extracts dynamic report data and tokenizes it.
     
     Args:
         report_text: Raw JSON report text
@@ -137,42 +147,16 @@ def preprocess_report(report_text):
         # Parse JSON report
         report = json.loads(report_text)
         
-        # Extract relevant sections (similar to get_mal_data processing)
-        words = []
+        # Extract dynamic report section
+        dynamic_report_tokenized = []
         
-        # Process behavior section if exists
-        if 'behavior' in report and 'processes' in report['behavior']:
-            for process in report['behavior']['processes']:
-                # Add process name
-                if 'process_name' in process:
-                    words.append(process['process_name'].lower())
-                
-                # Add API calls
-                if 'calls' in process:
-                    for call in process['calls']:
-                        if 'api' in call:
-                            words.append(call['api'].lower())
-                        if 'arguments' in call:
-                            for arg in call['arguments']:
-                                if isinstance(arg, str):
-                                    # Clean and add argument
-                                    cleaned = re.sub(r'[^a-zA-Z0-9\s]', ' ', arg.lower())
-                                    words.extend(cleaned.split())
-        
-        # Process network section if exists
-        if 'network' in report:
-            network = report['network']
-            if 'dns' in network:
-                for dns in network['dns']:
-                    if 'hostname' in dns:
-                        words.append(dns['hostname'].lower())
-            if 'http' in network:
-                for http in network['http']:
-                    if 'host' in http:
-                        words.append(http['host'].lower())
+        if 'dynamic' in report:
+            for item in report['dynamic']:
+                line = f"{item['Operation']}, {item['Path']}, {item['Result']}"
+                dynamic_report_tokenized.extend(mal_tokenizer(line))
         
         # Join words into text
-        text = " ".join(words)
+        text = " ".join(dynamic_report_tokenized)
         
         return text
     
@@ -238,14 +222,14 @@ def get_analysis_tag(analysis_id):
     """
     try:
         # Query for analysis
-        from sandbox.app.models import Analysis, Tag
+        from sandbox.models import Analysis, Tag
         
         analysis = SANDBOX_SESSION.query(Analysis).filter_by(id=analysis_id).first()
         if not analysis:
             return None
         
         # Get sample
-        from sandbox.app.models import Sample
+        from sandbox.models import Sample
         sample = SANDBOX_SESSION.query(Sample).filter_by(sha256=analysis.sample).first()
         if not sample:
             return None
@@ -272,12 +256,13 @@ def process_completed_analysis(candidate):
         logging.info(f"Processing candidate {candidate.hash} with analysis {candidate.analysis_id}")
         
         # Get analysis from sandbox database
-        from sandbox.app.models import Analysis
+        from sandbox.models import Analysis
         analysis = SANDBOX_SESSION.query(Analysis).filter_by(id=candidate.analysis_id).first()
         
         if not analysis:
             logging.error(f"Analysis {candidate.analysis_id} not found")
             candidate.status = 4
+            candidate.F3 = 0
             candidate.error_message = "Analysis not found"
             ES_SESSION.commit()
             return
@@ -294,6 +279,7 @@ def process_completed_analysis(candidate):
         # Check if analysis is complete (status=2)
         if analysis.status != 2:
             # Not complete yet (status=0 pending or status=1 running)
+            logging.info(f"Analysis {candidate.analysis_id} not complete yet (status={analysis.status})")
             return
         
         # Get class tag to determine target class
@@ -301,6 +287,7 @@ def process_completed_analysis(candidate):
         if not class_tag:
             logging.error(f"No class tag found for analysis {candidate.analysis_id}")
             candidate.status = 4
+            candidate.F3 = 0
             candidate.error_message = "No class tag found"
             ES_SESSION.commit()
             return
@@ -311,6 +298,7 @@ def process_completed_analysis(candidate):
         except ValueError:
             logging.error(f"Unknown class tag: {class_tag}. Expected one of {SIGNATURES}")
             candidate.status = 4
+            candidate.F3 = 0
             candidate.error_message = f"Unknown class tag: {class_tag}"
             ES_SESSION.commit()
             return
@@ -319,6 +307,7 @@ def process_completed_analysis(candidate):
         if not os.path.exists(analysis.report):
             logging.error(f"Report file not found: {analysis.report}")
             candidate.status = 4
+            candidate.F3 = 0
             candidate.error_message = "Report file not found"
             ES_SESSION.commit()
             return
@@ -332,6 +321,7 @@ def process_completed_analysis(candidate):
         if not preprocessed_text:
             logging.error(f"Failed to preprocess report for candidate {candidate.hash}")
             candidate.status = 4
+            candidate.F3 = 0
             candidate.error_message = "Failed to preprocess report"
             ES_SESSION.commit()
             return
@@ -349,6 +339,7 @@ def process_completed_analysis(candidate):
     except Exception as e:
         logging.error(f"Error processing completed analysis: {e}")
         candidate.status = 4
+        candidate.F3 = 0
         candidate.error_message = f"Classification error: {str(e)}"
         ES_SESSION.commit()
 
@@ -457,6 +448,10 @@ async def main_loop(config, poll_interval):
     
     while True:
         try:
+            # Clear session cache to get fresh data
+            ES_SESSION.expire_all()
+            SANDBOX_SESSION.expire_all()
+            
             # Check for build VM timeouts
             await check_build_vm_timeouts(config)
             
@@ -465,7 +460,10 @@ async def main_loop(config, poll_interval):
             
             for candidate in candidates_analyzing:
                 process_completed_analysis(candidate)
-            
+
+            if not candidates_analyzing:
+                logging.info("No candidates with completed analyses to process")
+
             # Sleep before next poll
             await asyncio.sleep(poll_interval)
         

@@ -227,6 +227,9 @@ async def main():
     # loop to monitor VMs
     while True:
         try:
+            # Clear session cache to get fresh data
+            session.expire_all()
+            
             # get all analyses currently running
             analyses = session.query(Analysis).filter(Analysis.status == 1).all()
 

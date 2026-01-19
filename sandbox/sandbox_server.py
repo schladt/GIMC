@@ -144,7 +144,7 @@ def submit_analysis(hash):
             return {"error": "sample not found"}, 404
         
         # Create analysis object
-        timestamp = datetime.datetime.utcnow()
+        timestamp = datetime.datetime.now(datetime.UTC)
         report_path = sample.filepath + '_{0}.json'.format(timestamp.strftime("%Y%m%d%H%M%S"))
         analysis = Analysis(sample=sample.sha256, report=report_path)
         session.add(analysis)
@@ -260,6 +260,7 @@ def submit_sample():
 
         # Check if tags were submitted
         if 'tags' in request.form:
+            logging.info(f"adding tags to sample {file_hashes['sha256']}, tags: {request.form['tags']}")
             try:
                 tags = request.form['tags']
                 tags = tags.split(',')
@@ -278,6 +279,9 @@ def submit_sample():
                     # Check if tag is already associated with sample
                     if tag_obj not in sample.tags:
                         sample.tags.append(tag_obj)
+                
+                # Commit the tag associations
+                session.commit()
             except Exception as e:
                 logging.info(f"error adding tags to sample: {e}")
                 session.close()
