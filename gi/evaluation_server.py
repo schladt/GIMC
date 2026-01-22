@@ -26,10 +26,10 @@ from flask_httpauth import HTTPTokenAuth
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL, Config
-from models import Base, Candidate, Prototypes, Ingredient
 
-# Import sandbox models for Analysis, Sample, and Tag
-from sandbox.models import Analysis, Sample, Tag
+# Import all models from unified models file
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from models import Base, Candidate, Prototypes, Ingredient, Analysis, Sample, Tag
 
 ###################################
 # Configuration and Setup

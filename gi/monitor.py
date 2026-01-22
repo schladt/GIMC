@@ -23,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from classifier.models.cnn_nlp import CNN_NLP
 from classifier.utils.mal_data import get_mal_data
-from gi.models import Candidate
+from models import Candidate, Analysis, Sample, Tag
 from gi.config import Config
 
 # set up logging
@@ -222,14 +222,11 @@ def get_analysis_tag(analysis_id):
     """
     try:
         # Query for analysis
-        from sandbox.models import Analysis, Tag
-        
         analysis = SANDBOX_SESSION.query(Analysis).filter_by(id=analysis_id).first()
         if not analysis:
             return None
         
         # Get sample
-        from sandbox.models import Sample
         sample = SANDBOX_SESSION.query(Sample).filter_by(sha256=analysis.sample).first()
         if not sample:
             return None
@@ -256,7 +253,6 @@ def process_completed_analysis(candidate):
         logging.info(f"Processing candidate {candidate.hash} with analysis {candidate.analysis_id}")
         
         # Get analysis from sandbox database
-        from sandbox.models import Analysis
         analysis = SANDBOX_SESSION.query(Analysis).filter_by(id=candidate.analysis_id).first()
         
         if not analysis:

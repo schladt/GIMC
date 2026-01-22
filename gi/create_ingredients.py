@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 from sqlalchemy import create_engine, MetaData, Table, func, Column, Integer, String, Text, ForeignKey, UniqueConstraint, exc
 from sqlalchemy.orm import sessionmaker
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models import Prototypes, Ingredient, Base
 
 # Import settings
