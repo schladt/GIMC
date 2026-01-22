@@ -365,7 +365,7 @@ async def check_build_vm_timeouts(config):
             last_updated = candidate.date_updated.replace(tzinfo=None)
             time_diff = (current_time - last_updated).total_seconds()
             
-            logging.debug(f"Candidate {candidate.hash}: time difference = {time_diff}s")
+            logging.info(f"Candidate {candidate.hash}: time difference = {time_diff}s")
             
             if time_diff > config.VM_TIMEOUT:
                 logging.warning(f"Candidate {candidate.hash} on VM {candidate.build_vm} timed out")
@@ -393,8 +393,8 @@ async def reset_build_vm(vm_name, config):
     """
     try:
         # Import VM management functions based on provider
-        from sandbox.utils.monitor import vmware_linux_reset_snapshot, vmware_linux_start_vm
-        from sandbox.utils.monitor import virsh_reset_snapshot, virsh_start_vm
+        from sandbox.monitor import vmware_linux_reset_snapshot, vmware_linux_start_vm
+        from sandbox.monitor import virsh_reset_snapshot, virsh_start_vm
         
         vm_provider = config.VM_PROVIDER
         
@@ -458,7 +458,7 @@ async def main_loop(config, poll_interval):
                 process_completed_analysis(candidate)
 
             if not candidates_analyzing:
-                logging.info("No candidates with completed analyses to process")
+                logging.debug("No candidates with completed analyses to process")
 
             # Sleep before next poll
             await asyncio.sleep(poll_interval)
@@ -470,6 +470,50 @@ async def main_loop(config, poll_interval):
         except Exception as e:
             logging.error(f"Error in main loop: {e}")
             await asyncio.sleep(poll_interval)
+
+###################################
+# VM Initialization
+###################################
+
+async def initialize_vms(config):
+    """
+    Initialize build VMs by resetting to snapshots and starting them.
+    
+    Args:
+        config: Config object with VM settings
+    """
+    # Import VM management functions based on provider
+    from sandbox.monitor import vmware_linux_reset_snapshot, vmware_linux_start_vm
+    from sandbox.monitor import virsh_reset_snapshot, virsh_start_vm
+    
+    vm_provider = config.VM_PROVIDER
+    
+    if vm_provider == 'vmware':
+        reset_snapshot = vmware_linux_reset_snapshot
+        start_vm = vmware_linux_start_vm
+    elif vm_provider == 'libvirt':
+        reset_snapshot = virsh_reset_snapshot
+        start_vm = virsh_start_vm
+    else:
+        logging.error(f"Unknown VM provider: {vm_provider}")
+        return
+    
+    # Get VMs from config
+    vms = config.VMS
+    
+    logging.info(f"Initializing {len(vms)} build VMs...")
+    
+    # Reset all VMs to snapshot
+    logging.info("Resetting VMs to snapshots...")
+    list_of_tasks = [reset_snapshot(vm['name'], vm['snapshot']) for vm in vms]
+    await asyncio.gather(*list_of_tasks)
+    
+    # Start all VMs
+    logging.info("Starting VMs...")
+    list_of_tasks = [start_vm(vm['name']) for vm in vms]
+    await asyncio.gather(*list_of_tasks)
+    
+    logging.info("All build VMs initialized and ready")
 
 ###################################
 # Entry Point
@@ -501,6 +545,9 @@ async def main():
     
     # Load config
     config = Config()
+    
+    # Initialize build VMs
+    await initialize_vms(config)
     
     # Start main loop
     await main_loop(config, args.poll_interval)

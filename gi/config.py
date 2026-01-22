@@ -23,15 +23,31 @@ class Config(object):
     # Build VM Configuration
     VM_PROVIDER = 'libvirt'
     VMS = [
-        {
-            'name': 'win10',
-            'ip': '192.168.122.100',
-            'snapshot': 'build'
-        },
         # {
-        #     'name': 'win10-build-02',
-        #     'ip': '192.168.122.202',
+        #     'name': 'win10',
+        #     'ip': '192.168.122.100',
         #     'snapshot': 'build'
         # },
+        {
+            'name': 'win10-analysis-01',
+            'ip': '192.168.122.101',
+            'snapshot': 'build'
+        },
+        {
+            'name': 'win10-analysis-02',
+            'ip': '192.168.122.102',
+            'snapshot': 'build'
+        },
+        {
+            'name': 'win10-analysis-03',
+            'ip': '192.168.122.103',
+            'snapshot': 'build'
+        },
+        {
+            'name': 'win10-analysis-04',
+            'ip': '192.168.122.104',
+            'snapshot': 'build'
+        },
+
     ]
-    VM_TIMEOUT = 300  # 5 minutes for build timeout
+    VM_TIMEOUT = 60 # 1 minute timeout for VM operations

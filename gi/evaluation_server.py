@@ -366,8 +366,8 @@ def reanalyze(hash):
 
 def revert_vm(vm_name, config):
     """ Revert VM to snapshot """
-    from sandbox.utils.monitor import vmware_linux_reset_snapshot, vmware_linux_start_vm, vmware_linux_get_running_vms
-    from sandbox.utils.monitor import virsh_reset_snapshot, virsh_start_vm, virsh_get_running_vms
+    from sandbox.monitor import vmware_linux_reset_snapshot, vmware_linux_start_vm, vmware_linux_get_running_vms
+    from sandbox.monitor import virsh_reset_snapshot, virsh_start_vm, virsh_get_running_vms
 
     # read config for VM provider
     vm_provider = config.VM_PROVIDER

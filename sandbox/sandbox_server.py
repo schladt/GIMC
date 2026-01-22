@@ -30,8 +30,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from config import Config
 from models import Base, User, Analysis, Tag, Sample, sample_tag
-from utils.monitor import vmware_linux_get_running_vms, vmware_linux_reset_snapshot, vmware_linux_start_vm
-from utils.monitor import virsh_get_running_vms, virsh_reset_snapshot, virsh_start_vm
+from monitor import vmware_linux_get_running_vms, vmware_linux_reset_snapshot, vmware_linux_start_vm
+from monitor import virsh_get_running_vms, virsh_reset_snapshot, virsh_start_vm
 
 ###################################
 # Configuration and Setup
