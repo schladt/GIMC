@@ -28,6 +28,9 @@ from sqlalchemy.orm import sessionmaker
 from config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL, Config
 from models import Base, Candidate, Prototypes, Ingredient
 
+# Import sandbox models for Analysis, Sample, and Tag
+from sandbox.models import Analysis, Sample, Tag
+
 ###################################
 # Configuration and Setup
 ###################################
@@ -99,28 +102,58 @@ def submit():
 
     # create a new database session
     session = Session()
-    # check if candidate already exists
-    candidate = session.query(Candidate).filter_by(hash=code_hash).first()
-    if candidate:
-        # reset status, fitness values, and other fields
-        candidate.status = 0
-        candidate.F1 = None
-        candidate.F2 = None
-        candidate.F3 = None
-        candidate.analysis_id = None
-        candidate.error_message = None
-        candidate.build_vm = None
-    else:
-        # create new candidate entry
-        candidate = Candidate(
-            hash=code_hash,
-            code=encoded_code,
-            status=0
-        )
-    session.add(candidate)
-    session.commit()
-    session.close()
-    return jsonify({'status': 'success', 'message': 'Code received for evaluation'}), 200
+    
+    try:
+        # check if candidate already exists
+        candidate = session.query(Candidate).filter_by(hash=code_hash).first()
+        if candidate:
+            # reset status, fitness values, and other fields
+            candidate.status = 0
+            candidate.F1 = None
+            candidate.F2 = None
+            candidate.F3 = None
+            candidate.analysis_id = None
+            candidate.error_message = None
+            candidate.build_vm = None
+        else:
+            # create new candidate entry
+            candidate = Candidate(
+                hash=code_hash,
+                code=encoded_code,
+                status=0
+            )
+        session.add(candidate)
+        session.commit()
+        
+        # Handle class tag if provided
+        if 'class' in request.json:
+            class_value = request.json['class']
+            
+            # Get or create the tag
+            tag = session.query(Tag).filter_by(key='class', value=class_value).first()
+            if not tag:
+                tag = Tag(key='class', value=class_value)
+                session.add(tag)
+                session.commit()
+                session.refresh(tag)
+                logging.info(f"Created new tag: class={class_value}")
+            
+            # Associate tag with candidate if not already associated
+            if tag not in candidate.tags:
+                candidate.tags.append(tag)
+                session.commit()
+                logging.info(f"Associated tag class={class_value} with candidate {code_hash[:8]}...")
+            else:
+                logging.info(f"Tag class={class_value} already associated with candidate {code_hash[:8]}...")
+        
+        session.close()
+        return jsonify({'status': 'success', 'message': 'Code received for evaluation'}), 200
+        
+    except Exception as e:
+        session.rollback()
+        session.close()
+        logging.error(f"Error processing submission: {e}")
+        return jsonify({'status': 'error', 'message': 'Error processing submission'}), 500
 
 @app.route('/vm/checkin', methods=['GET'])
 @auth.login_required
@@ -224,6 +257,25 @@ def vm_update():
     if 'analysis_id' in request.json:
         candidate.analysis_id = request.json['analysis_id']
         updated_fields.append('analysis_id')
+        
+        # Create candidate-sample association when analysis_id is provided
+        try:
+            analysis = session.query(Analysis).filter_by(id=request.json['analysis_id']).first()
+            if analysis and analysis.sample:
+                sample = session.query(Sample).filter_by(sha256=analysis.sample).first()
+                if sample:
+                    # Associate sample with candidate if not already associated
+                    if sample not in candidate.samples:
+                        candidate.samples.append(sample)
+                        logging.info(f"Associated sample {sample.sha256[:8]}... with candidate {candidate_hash[:8]}...")
+                    else:
+                        logging.info(f"Sample {sample.sha256[:8]}... already associated with candidate {candidate_hash[:8]}...")
+                else:
+                    logging.warning(f"Sample {analysis.sample} not found for analysis {request.json['analysis_id']}")
+            else:
+                logging.warning(f"Analysis {request.json['analysis_id']} not found or has no sample")
+        except Exception as e:
+            logging.error(f"Error associating sample with candidate: {e}")
     if 'error_message' in request.json:
         candidate.error_message = request.json['error_message']
         updated_fields.append('error_message')

@@ -1,10 +1,28 @@
 
-from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, UniqueConstraint, DateTime
+from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, UniqueConstraint, DateTime, Table
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
-   
+import sys
+import os
+
+# Add sandbox to path to import its models
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from sandbox.models import Tag, Sample
 
 Base = declarative_base()
+
+# Many-to-many table for candidate and tag
+candidate_tag = Table('candidate_tag', Base.metadata,
+    Column('candidate_hash', String, ForeignKey('candidate.hash'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('tag.id'), primary_key=True)
+)
+
+# Many-to-many table for candidate and sample
+candidate_sample = Table('candidate_sample', Base.metadata,
+    Column('candidate_hash', String, ForeignKey('candidate.hash'), primary_key=True),
+    Column('sample_sha256', String(64), ForeignKey('sample.sha256'), primary_key=True)
+)
 
 class Candidate(Base):
     __tablename__ = 'candidate'
@@ -20,6 +38,10 @@ class Candidate(Base):
     date_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     error_message = Column(Text)
     build_vm = Column(String)  # VM name assigned to this build
+    
+    # Relationships
+    tags = relationship('Tag', secondary=candidate_tag, backref='candidates', lazy=True)
+    samples = relationship('Sample', secondary=candidate_sample, backref='candidates', lazy=True)
 
 class Prototypes(Base):
     __tablename__ = 'prototypes'
