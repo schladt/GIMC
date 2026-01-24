@@ -1,0 +1,24 @@
+# Compiler settings for bsi.cpp
+CXX = g++
+CXXFLAGS = -O2 -static -Wall -Wextra
+LIBS = -lole32 -loleaut32 -lwbemuuid
+
+TARGET = bsi.exe
+SOURCE = bsi.cpp
+
+all: $(TARGET)
+
+$(TARGET): $(SOURCE)
+	$(CXX) $(CXXFLAGS) $(SOURCE) -o $(TARGET) $(LIBS)
+
+clean:
+	rm -f $(TARGET) *.obj *.exe
+
+run: $(TARGET)
+	$(TARGET)
+
+# MSVC alternative
+msvc:
+	cl /EHsc /W3 /O2 $(SOURCE) /Fe$(TARGET) /link wbemuuid.lib ole32.lib oleaut32.lib
+
+.PHONY: all clean run mingw
