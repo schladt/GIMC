@@ -11,7 +11,7 @@ import json
 import math
 import xml.etree.ElementTree as ET
 
-from models import Prototypes, Ingredient
+from models import Candidate, Ingredient
 
 def find_depth(elem, depth=0):
     """Find the depth of an element in the XML tree."""
@@ -135,11 +135,11 @@ class Genome:
             genome (list): A list of chromosomes
         """
 
-        # Get the prototype
-        prototype = session.query(Prototypes).filter(Prototypes.hash == self.prototype_hash).first()
+        # Get the candidate
+        candidate = session.query(Candidate).filter(Candidate.hash == self.prototype_hash).first()
 
         # parse the xml file
-        tree = ET.ElementTree(ET.fromstring(prototype.xml))
+        tree = ET.ElementTree(ET.fromstring(candidate.xml))
         self.modified_tree = tree # modified tree starts as the base tree
         root = tree.getroot()
         self.orig_elems = [e for e in root.iter()]
@@ -181,8 +181,8 @@ class Genome:
                     # check if in dirty list or previous edits on parents have already replaced the element
                     if (chromosome.position not in dirty_list) and (not bool(set(chromosome.parents) & set(dirty_list))):
                         # get the original and donor element
-                        donor_prototype = session.query(Prototypes).filter(Prototypes.hash == edit.prototype_hash).first()
-                        donor_tree = ET.ElementTree(ET.fromstring(donor_prototype.xml))
+                        donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.prototype_hash).first()
+                        donor_tree = ET.ElementTree(ET.fromstring(donor_candidate.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
                         # replace the element
                         donor_elem = donor_elems[edit.prototype_position]

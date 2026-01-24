@@ -1,5 +1,5 @@
 """
-Script creates ingredients associated with all prototypes in the database
+Script creates ingredients associated with all candidates in the database
 Ingredients are stored in the ingredient table
 Script does not check for duplicates but will silently ignore them
 """
@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 from sqlalchemy import create_engine, MetaData, Table, func, Column, Integer, String, Text, ForeignKey, UniqueConstraint, exc
 from sqlalchemy.orm import sessionmaker
 
-from models import Prototypes, Ingredient, Base
+from models import Candidate, Ingredient, Base
 
 # Import settings
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,30 +59,30 @@ def main():
     # Tag = Table('tag', metadata, autoload_with=engine)
     # SampleTag = Table('sample_tag', metadata, autoload_with=engine)
     Ingredient = Table('ingredient', metadata, autoload_with=engine)
-    Prototypes = Table('prototypes', metadata, autoload_with=engine)
+    Candidates = Table('candidate', metadata, autoload_with=engine)
 
-    # Get all prototypes
-    prototypes = session.query(Prototypes).all()
+    # Get all candidates
+    candidates = session.query(Candidates).all()
 
     # create a temporary directory to store the prototype
     tmp_dir = os.path.abspath('tmp')
     os.makedirs(tmp_dir, exist_ok=True)
 
-    # process each prototype and show progress bar using tqdm
-    for prototype in tqdm.tqdm(prototypes, desc='Creating ingredients'):
-        print(f"Processing prototype: {prototype.name} ({prototype.hash})")
+    # process each candidate and show progress bar using tqdm
+    for candidate in tqdm.tqdm(candidates, desc='Creating ingredients'):
+        print(f"Processing candidate: {candidate.hash}")
         
-        # write the prototype to a file
-        prototype_source = os.path.join(tmp_dir, 'prototype.c')
-        with open(prototype_source, 'w') as f:
-            f.write(prototype.code)    
+        # write the candidate to a file
+        candidate_source = os.path.join(tmp_dir, 'candidate.c')
+        with open(candidate_source, 'w') as f:
+            f.write(candidate.code)    
 
         # get the srcml client
         srcml_client = settings['srcml_client']
 
         # compile the code
-        prototype_xml = os.path.join(tmp_dir, 'prototype.xml')            
-        result = subprocess.run([srcml_client, prototype_source, '-o', prototype_xml], capture_output=True, text=True)
+        candidate_xml = os.path.join(tmp_dir, 'candidate.xml')            
+        result = subprocess.run([srcml_client, candidate_source, '-o', candidate_xml], capture_output=True, text=True)
 
         # check if the command was successful
         if result.returncode != 0:
@@ -92,15 +92,15 @@ def main():
             print(result.stdout)
 
         # read the xml file
-        with open(prototype_xml, 'r') as f:
+        with open(candidate_xml, 'r') as f:
             xml = f.read()
 
-        # update the prototype with the xml
-        query = Prototypes.update().where(Prototypes.c.hash == prototype.hash).values(xml=xml)
+        # update the candidate with the xml
+        query = Candidates.update().where(Candidates.c.hash == candidate.hash).values(xml=xml)
         conn.execute(query)
 
         # parse the xml file
-        tree = ET.parse(prototype_xml)
+        tree = ET.parse(candidate_xml)
         root = tree.getroot()
 
         # create and add ingredients to the database
@@ -108,12 +108,12 @@ def main():
         for elem in root.iter():
             depth = find_depth(elem)
             tag = elem.tag.split('}')[1]
-            # print(f"Adding {tag} at position {position} with depth {depth} to the database for prototype {prototype.hash}.")
-            query = Ingredient.insert().values(prototype=prototype.hash, tag=tag, position=position, depth=depth)
+            # print(f"Adding {tag} at position {position} with depth {depth} to the database for candidate {candidate.hash}.")
+            query = Ingredient.insert().values(candidate=candidate.hash, tag=tag, position=position, depth=depth)
             try:
                 conn.execute(query)
             except exc.IntegrityError as e:
-                print(f"Failed to add {tag} at position {position} with depth {depth} to the database for prototype {prototype.hash}.")
+                print(f"Failed to add {tag} at position {position} with depth {depth} to the database for candidate {candidate.hash}.")
                 # conn.rollback()
             position += 1
         conn.commit()

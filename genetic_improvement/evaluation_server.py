@@ -24,7 +24,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL, Config
-from models import Base, Candidate, Prototypes, Ingredient, Analysis, Sample, Tag
+from models import Base, Candidate, Ingredient, Analysis, Sample, Tag
 
 ###################################
 # Configuration and Setup

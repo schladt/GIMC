@@ -40,6 +40,7 @@ class Candidate(Base):
     
     hash = Column(String, primary_key=True)  # sha256 unique identifier
     code = Column(Text)  # base64 encoded C source code
+    xml = Column(Text)  # srcML XML representation of code
     status = Column(Integer, default=0)  # 0=pending, 1=building, 2=analyzing, 3=complete, 4=error
     F1 = Column(Float)  # Fitness 1: compile quality (warnings/errors)
     F2 = Column(Float)  # Fitness 2: unit test pass rate
@@ -54,28 +55,16 @@ class Candidate(Base):
     tags = relationship('Tag', secondary=candidate_tag, backref='candidates')
     samples = relationship('Sample', secondary=candidate_sample, backref='candidates')
 
-class Prototypes(Base):
-    __tablename__ = 'prototypes'
-                          
-    hash = Column(String, primary_key=True)   
-    name = Column(String)
-    prompt = Column(Text)
-    language = Column(String)
-    code = Column(Text)
-    xml = Column(Text)
-    status = Column(Integer)
-    num_errors = Column(Integer)               
-
 class Ingredient(Base):
     __tablename__ = 'ingredient'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    prototype = Column(String, ForeignKey('prototypes.hash'), nullable=False)
+    candidate = Column(String, ForeignKey('candidate.hash'), nullable=False)
     tag = Column(String)
     position = Column(Integer)
     depth = Column(Integer)
     
     # create unique constraint
-    __table_args__ = (UniqueConstraint('prototype', 'position', name='unique_ingredient'),)
+    __table_args__ = (UniqueConstraint('candidate', 'position', name='unique_ingredient'),)
 
 ###################################
 # Sandbox Models (from sandbox/models.py)
