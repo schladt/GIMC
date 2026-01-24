@@ -26,23 +26,29 @@ async def libvirt_shutdown_vm(vm):
     return True
 
 async def main():
-    from ..config import Config
+    from ..config import Config as SandboxConfig
+    from genetic_improvement.config import Config as GIConfig
 
-    config = Config()
+    sandbox_config = SandboxConfig()
+    gi_config = GIConfig()
 
     # check if vm manager is libvirt
-    if config.VM_PROVIDER.strip().lower() == 'libvirt':
-        shutdown_vm = libvirt_shutdown_vm
-    else:
+    if sandbox_config.VM_PROVIDER.strip().lower() != 'libvirt':
         logging.error("VM provider not supported")
         return
+    
+    shutdown_vm = libvirt_shutdown_vm
 
-    # get VMs from config
-    vms = config.VMS
+    # get VMs from both configs
+    all_vms = []
+    all_vms.extend(sandbox_config.VMS)
+    all_vms.extend(gi_config.VMS)
+    
+    logging.info(f"Shutting down {len(all_vms)} VMs from sandbox and genetic_improvement configs")
 
     # shut down VMs via gather
     tasks = []
-    for vm in vms:
+    for vm in all_vms:
         tasks.append(shutdown_vm(vm['name']))
     await asyncio.gather(*tasks)
 
