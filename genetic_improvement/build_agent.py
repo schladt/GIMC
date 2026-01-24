@@ -38,7 +38,6 @@ SANDBOX_TOKEN = None
 BUILD_DIR = None
 MAKEFILE_PATH = None
 UNIT_TEST_PATH = None
-CLASSIFICATION_LABEL = None
 POLL_INTERVAL = 5  # seconds
 BUILD_TIMEOUT = 300  # seconds
 
@@ -72,8 +71,6 @@ def parse_args():
                         help='Directory for building code (must contain Makefile)')
     parser.add_argument('--unit-test', required=True,
                         help='Path to unit test script')
-    parser.add_argument('--classification-label', required=True,
-                        help='Classification label to tag samples (e.g., wmi, com, cmd)')
     
     # Optional arguments
     parser.add_argument('--poll-interval', type=int, default=5,
@@ -85,7 +82,7 @@ def parse_args():
     
     # Set global configuration
     global ES_API_URL, ES_API_TOKEN, SANDBOX_URL, SANDBOX_TOKEN
-    global BUILD_DIR, MAKEFILE_PATH, UNIT_TEST_PATH, CLASSIFICATION_LABEL, POLL_INTERVAL, BUILD_TIMEOUT
+    global BUILD_DIR, MAKEFILE_PATH, UNIT_TEST_PATH, POLL_INTERVAL, BUILD_TIMEOUT
     
     ES_API_URL = args.es_url
     ES_API_TOKEN = args.es_token
@@ -94,7 +91,6 @@ def parse_args():
     BUILD_DIR = os.path.abspath(args.build_dir)
     MAKEFILE_PATH = os.path.join(BUILD_DIR, 'Makefile')
     UNIT_TEST_PATH = os.path.abspath(args.unit_test)
-    CLASSIFICATION_LABEL = args.classification_label
     POLL_INTERVAL = args.poll_interval
     BUILD_TIMEOUT = args.timeout
     
@@ -362,7 +358,7 @@ def run_unit_tests(binary_name):
 def submit_to_sandbox(binary_name):
     """
     Submit binary to GIMC sandbox for dynamic analysis.
-    Submits sample with analyze=true and adds classification label as tag.
+    Submits sample with analyze=true.
     
     Args:
         binary_name: Name of the compiled binary
@@ -386,10 +382,9 @@ def submit_to_sandbox(binary_name):
             'file': (binary_name, binary_data, 'application/octet-stream')
         }
         
-        # Add form data for analyze flag and classification tag
+        # Add form data for analyze flag
         data = {
-            'analyze': 'true',
-            'tags': f'class={CLASSIFICATION_LABEL}'
+            'analyze': 'true'
         }
         
         response = requests.post(
@@ -520,7 +515,6 @@ def main():
     logging.info(f"Build directory: {BUILD_DIR}")
     logging.info(f"Makefile path: {MAKEFILE_PATH}")
     logging.info(f"Unit test path: {UNIT_TEST_PATH}")
-    logging.info(f"Classification label: {CLASSIFICATION_LABEL}")
     logging.info(f"Poll interval: {POLL_INTERVAL}s")
     
     # Note: Makefile and unit test file will be provided as configuration

@@ -207,36 +207,26 @@ def classify_report(report_text, target_class):
 # Analysis Processing
 ###################################
 
-def get_analysis_tag(analysis_id):
+def get_candidate_class_tag(candidate):
     """
-    Get the class tag value from an analysis.
+    Get the class tag value from a candidate.
     
     Args:
-        analysis_id: Analysis ID
+        candidate: Candidate object
     
     Returns:
         Class tag value or None
     """
     try:
-        # Query for analysis
-        analysis = SANDBOX_SESSION.query(Analysis).filter_by(id=analysis_id).first()
-        if not analysis:
-            return None
-        
-        # Get sample
-        sample = SANDBOX_SESSION.query(Sample).filter_by(sha256=analysis.sample).first()
-        if not sample:
-            return None
-        
-        # Find 'class' tag
-        for tag in sample.tags:
+        # Find 'class' tag directly on candidate
+        for tag in candidate.tags:
             if tag.key == 'class':
                 return tag.value
         
         return None
     
     except Exception as e:
-        logging.error(f"Error getting analysis tag: {e}")
+        logging.error(f"Error getting candidate class tag: {e}")
         return None
 
 def process_completed_analysis(candidate):
@@ -276,9 +266,9 @@ def process_completed_analysis(candidate):
             return
         
         # Get class tag to determine target class
-        class_tag = get_analysis_tag(candidate.analysis_id)
+        class_tag = get_candidate_class_tag(candidate)
         if not class_tag:
-            logging.error(f"No class tag found for analysis {candidate.analysis_id}")
+            logging.error(f"No class tag found for candidate {candidate.hash}")
             candidate.status = 4
             candidate.F3 = 0
             candidate.error_message = "No class tag found"
