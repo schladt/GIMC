@@ -169,13 +169,8 @@ async def main():
     """
     Main function to monitor VMs while running independent of the Flask app
     """
-    import sys
-    import os
-    
-    # Add parent directory to path for imports
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     from models import Analysis
-    from config import Config
+    from .config import Config
     
     config = Config() 
 

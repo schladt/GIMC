@@ -18,13 +18,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from transformers import AutoTokenizer
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from classifier.models.cnn_nlp import CNN_NLP
 from classifier.utils.mal_data import get_mal_data
 from models import Candidate, Analysis, Sample, Tag
-from gi.config import Config
+from .config import Config
 
 # set up logging
 logging.basicConfig(

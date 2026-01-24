@@ -1,9 +1,12 @@
 
 import json
+import os
 
 # load settings from file. 
 # Note: For some reason Flask doesn't like this being in the class __init__ function
-settings_file = '../settings.json'
+# Get the project root directory (parent of sandbox directory)
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+settings_file = os.path.join(project_root, 'settings.json')
 with open(settings_file) as f:
     settings = json.load(f)
 

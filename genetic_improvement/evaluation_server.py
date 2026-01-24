@@ -18,17 +18,12 @@ import re
 import threading
 import asyncio
 
-# Add project root to Python path for sandbox imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from flask import Flask, jsonify, request, make_response
 from flask_httpauth import HTTPTokenAuth
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL, Config
 
-# Import all models from unified models file
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from .config import UNIT_TEST_FILE, SANDBOX_TOKEN, SANDBOX_URL, Config
 from models import Base, Candidate, Prototypes, Ingredient, Analysis, Sample, Tag
 
 ###################################
@@ -36,7 +31,8 @@ from models import Base, Candidate, Prototypes, Ingredient, Analysis, Sample, Ta
 ###################################
 
 # Load settings from settings.json
-settings_file = '../settings.json'
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+settings_file = os.path.join(project_root, 'settings.json')
 with open(settings_file) as f:
     settings = json.load(f)
 
@@ -407,15 +403,20 @@ def revert_vm(vm_name, config):
 # Main Entry Point
 ###################################
 
-if __name__ == '__main__':
+def main():
+    """Entry point for evaluation server"""
     # get the first argument
     if len(sys.argv) > 2:
         interface = sys.argv[1]
         port = sys.argv[2]
     else:
         # exit
-        print("Usage: python run.py <interface address> <port>")
+        print("Usage: python -m genetic_improvement.evaluation_server <interface address> <port>")
         sys.exit(1)
     # Initialize database on startup
     init_db()
     app.run(host=interface, port=int(port), debug=True, threaded=True)
+
+
+if __name__ == '__main__':
+    main()

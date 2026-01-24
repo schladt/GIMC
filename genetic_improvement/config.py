@@ -1,6 +1,8 @@
 import os, json
 
-settings_file = '../settings.json'
+# Get the project root directory (parent of genetic_improvement directory)
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+settings_file = os.path.join(project_root, 'settings.json')
 
 with open(settings_file, 'r') as f:
     settings = json.load(f)

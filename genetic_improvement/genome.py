@@ -9,12 +9,9 @@ import requests
 import io
 import json
 import math
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models import Prototypes, Ingredient
-
 import xml.etree.ElementTree as ET
+
+from models import Prototypes, Ingredient
 
 def find_depth(elem, depth=0):
     """Find the depth of an element in the XML tree."""

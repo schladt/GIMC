@@ -21,17 +21,15 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
 
-# Add project root to Python path for sandbox imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from flask import Flask, jsonify, request, make_response, send_file
 from flask_httpauth import HTTPTokenAuth
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from config import Config
+
+from .config import Config
 from models import Base, User, Analysis, Tag, Sample, sample_tag
-from monitor import vmware_linux_get_running_vms, vmware_linux_reset_snapshot, vmware_linux_start_vm
-from monitor import virsh_get_running_vms, virsh_reset_snapshot, virsh_start_vm
+from .monitor import vmware_linux_get_running_vms, vmware_linux_reset_snapshot, vmware_linux_start_vm
+from .monitor import virsh_get_running_vms, virsh_reset_snapshot, virsh_start_vm
 
 ###################################
 # Configuration and Setup
@@ -506,7 +504,8 @@ def vm_submit_error():
 # Main
 ###################################
 
-if __name__ == "__main__":
+def main():
+    """Entry point for sandbox server"""
     init_db()
     
     # Get interface and port from command line
@@ -514,7 +513,11 @@ if __name__ == "__main__":
         interface = sys.argv[1]
         port = int(sys.argv[2])
     else:
-        print("Usage: python sandbox_server.py <interface address> <port>")
+        print("Usage: python -m sandbox.sandbox_server <interface address> <port>")
         sys.exit(1)
 
     app.run(debug=True, host=interface, port=port, threaded=True)
+
+
+if __name__ == "__main__":
+    main()

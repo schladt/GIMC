@@ -11,7 +11,8 @@ import json
 import argparse
 
 # Load settings from settings.json
-settings_file = '../settings.json'
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+settings_file = os.path.join(project_root, 'settings.json')
 with open(settings_file) as f:
     settings = json.load(f)
 
