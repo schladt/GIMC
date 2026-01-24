@@ -44,41 +44,41 @@ class Config(object):
         #     'ip': '192.168.122.104',
         #     'snapshot': 'analysis'
         # },
-        # {
-        #     'name': 'win10-analysis-05', 
-        #     'ip': '192.168.122.105',
-        #     'snapshot': 'analysis'
-        # },
-        # {
-        #     'name': 'win10-analysis-06', 
-        #     'ip': '192.168.122.106',
-        #     'snapshot': 'analysis'
-        # },
-        # {
-        #     'name': 'win10-analysis-07', 
-        #     'ip': '192.168.122.107',
-        #     'snapshot': 'analysis'
-        # },
-        # {
-        #     'name': 'win10-analysis-08', 
-        #     'ip': '192.168.122.108',
-        #     'snapshot': 'analysis'
-        # },
-        # {
-        #     'name': 'win10-analysis-09', 
-        #     'ip': '192.168.122.109',
-        #     'snapshot': 'analysis'
-        # },
-        # {
-        #     'name': 'win10-analysis-10', 
-        #     'ip': '192.168.122.110',
-        #     'snapshot': 'analysis'
-        # },
-        # {
-        #     'name': 'win10-analysis-11', 
-        #     'ip': '192.168.122.111',
-        #     'snapshot': 'analysis'
-        # },
+        {
+            'name': 'win10-analysis-05', 
+            'ip': '192.168.122.105',
+            'snapshot': 'analysis'
+        },
+        {
+            'name': 'win10-analysis-06', 
+            'ip': '192.168.122.106',
+            'snapshot': 'analysis'
+        },
+        {
+            'name': 'win10-analysis-07', 
+            'ip': '192.168.122.107',
+            'snapshot': 'analysis'
+        },
+        {
+            'name': 'win10-analysis-08', 
+            'ip': '192.168.122.108',
+            'snapshot': 'analysis'
+        },
+        {
+            'name': 'win10-analysis-09', 
+            'ip': '192.168.122.109',
+            'snapshot': 'analysis'
+        },
+        {
+            'name': 'win10-analysis-10', 
+            'ip': '192.168.122.110',
+            'snapshot': 'analysis'
+        },
+        {
+            'name': 'win10-analysis-11', 
+            'ip': '192.168.122.111',
+            'snapshot': 'analysis'
+        },
         {
             'name': 'win10-analysis-12', 
             'ip': '192.168.122.112',

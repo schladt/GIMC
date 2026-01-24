@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, select, MetaData, Table, and_
 from tqdm import tqdm
 
-with open ('../settings.json') as f:
+# Get the project root directory
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+settings_file = os.path.join(project_root, 'settings.json')
+
+with open(settings_file) as f:
     settings = json.load(f)
 
 db_uri = settings['sqlalchemy_database_uri']
