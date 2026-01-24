@@ -9,6 +9,7 @@ import requests
 import io
 import json
 import math
+import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models import Prototypes, Ingredient
@@ -81,9 +82,9 @@ class Edit:
             raise ValueError(f"Edit type must be one of {self._edit_types}")
 
     def __str__(self):
-        if self.edit_type == 'replace' or self.edit_type == 'insert':
+        if self.edit_type in ('replace', 'insert'):
             return f"Edit: {self.edit_type} with position {self.prototype_position} in prototype {self.prototype_hash}"
-        else:
+        elif self.edit_type == 'delete':
             return f"Edit: {self.edit_type}"
         
 class Chromosome:
