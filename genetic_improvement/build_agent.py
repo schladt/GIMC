@@ -275,7 +275,7 @@ def save_makefile_and_unittest(encoded_makefile, encoded_unittest):
             # Decode and save Makefile
             decoded_makefile = base64.b64decode(encoded_makefile).decode('utf-8')
             makefile_path = os.path.join(BUILD_DIR, 'Makefile')
-            with open(makefile_path, 'w') as f:
+            with open(makefile_path, 'w', encoding='utf-8') as f:
                 f.write(decoded_makefile)
             logging.info(f"Saved Makefile to {makefile_path}")
         
@@ -283,7 +283,7 @@ def save_makefile_and_unittest(encoded_makefile, encoded_unittest):
             # Decode and save unit test
             decoded_unittest = base64.b64decode(encoded_unittest).decode('utf-8')
             unittest_path = os.path.join(BUILD_DIR, 'unit_test.py')
-            with open(unittest_path, 'w') as f:
+            with open(unittest_path, 'w', encoding='utf-8') as f:
                 f.write(decoded_unittest)
             logging.info(f"Saved unit test to {unittest_path}")
         

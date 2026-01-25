@@ -35,21 +35,21 @@ class Config(object):
             'ip': '192.168.122.101',
             'snapshot': 'build'
         },
-        {
-            'name': 'win10-analysis-02',
-            'ip': '192.168.122.102',
-            'snapshot': 'build'
-        },
-        {
-            'name': 'win10-analysis-03',
-            'ip': '192.168.122.103',
-            'snapshot': 'build'
-        },
-        {
-            'name': 'win10-analysis-04',
-            'ip': '192.168.122.104',
-            'snapshot': 'build'
-        },
+        # {
+        #     'name': 'win10-analysis-02',
+        #     'ip': '192.168.122.102',
+        #     'snapshot': 'build'
+        # },
+        # {
+        #     'name': 'win10-analysis-03',
+        #     'ip': '192.168.122.103',
+        #     'snapshot': 'build'
+        # },
+        # {
+        #     'name': 'win10-analysis-04',
+        #     'ip': '192.168.122.104',
+        #     'snapshot': 'build'
+        # },
 
     ]
     VM_TIMEOUT = 60 # 1 minute timeout for VM operations
