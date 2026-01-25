@@ -95,6 +95,26 @@ def submit():
 
     # base64 encode the code again to store
     encoded_code = base64.b64encode(decoded_code.encode('utf-8')).decode('utf-8')
+    
+    # Process makefile if provided
+    encoded_makefile = None
+    if 'makefile' in request.json:
+        makefile = request.json['makefile']
+        try:
+            decoded_makefile = base64.b64decode(makefile).decode('utf-8')
+        except Exception as e:
+            decoded_makefile = makefile  # assume it's plain text if decoding fails
+        encoded_makefile = base64.b64encode(decoded_makefile.encode('utf-8')).decode('utf-8')
+    
+    # Process unittest if provided
+    encoded_unittest = None
+    if 'unittest' in request.json:
+        unittest = request.json['unittest']
+        try:
+            decoded_unittest = base64.b64decode(unittest).decode('utf-8')
+        except Exception as e:
+            decoded_unittest = unittest  # assume it's plain text if decoding fails
+        encoded_unittest = base64.b64encode(decoded_unittest.encode('utf-8')).decode('utf-8')
 
     # create a new database session
     session = Session()
@@ -118,30 +138,20 @@ def submit():
                 code=encoded_code,
                 status=0
             )
+        
+        # Update makefile and unittest if provided
+        if encoded_makefile is not None:
+            candidate.makefile = encoded_makefile
+        if encoded_unittest is not None:
+            candidate.unit_test = encoded_unittest
+        
+        # Update classification if provided
+        if 'class' in request.json:
+            candidate.classification = request.json['class']
+            logging.info(f"Set classification={request.json['class']} for candidate {code_hash[:8]}...")
+        
         session.add(candidate)
         session.commit()
-        
-        # Handle class tag if provided
-        if 'class' in request.json:
-            class_value = request.json['class']
-            
-            # Get or create the tag
-            tag = session.query(Tag).filter_by(key='class', value=class_value).first()
-            if not tag:
-                tag = Tag(key='class', value=class_value)
-                session.add(tag)
-                session.commit()
-                session.refresh(tag)
-                logging.info(f"Created new tag: class={class_value}")
-            
-            # Associate tag with candidate if not already associated
-            if tag not in candidate.tags:
-                candidate.tags.append(tag)
-                session.commit()
-                logging.info(f"Associated tag class={class_value} with candidate {code_hash[:8]}...")
-            else:
-                logging.info(f"Tag class={class_value} already associated with candidate {code_hash[:8]}...")
-        
         session.close()
         return jsonify({'status': 'success', 'message': 'Code received for evaluation'}), 200
         
@@ -187,17 +197,18 @@ def vm_checkin():
     candidate.build_vm = vm_name
     session.commit()
     
-    # send base64 encoded code to VM
-    encoded_code = candidate.code
+    # Prepare JSON response with all build task data
+    response_data = {
+        'candidate_hash': candidate.hash,
+        'code': candidate.code,
+        'makefile': candidate.makefile,
+        'unittest': candidate.unit_test
+    }
+    
     session.close()
     
-    # send code to VM as base64 encoded text in response body
-    response = make_response(encoded_code)
-    response.headers['Content-Type'] = 'text/plain'
-    response.headers['X-Message'] = "code attached"
-    response.headers['X-Candidate-Hash'] = candidate.hash
     logging.info(f"Build VM {vm_name} received build task for candidate {candidate.hash}")
-    return response
+    return jsonify(response_data), 200
 
 @app.route('/vm/update', methods=['POST'])
 @auth.login_required

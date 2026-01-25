@@ -36,8 +36,7 @@ ES_API_TOKEN = None
 SANDBOX_URL = None
 SANDBOX_TOKEN = None
 BUILD_DIR = None
-MAKEFILE_PATH = None
-UNIT_TEST_PATH = None
+
 POLL_INTERVAL = 5  # seconds
 BUILD_TIMEOUT = 300  # seconds
 
@@ -68,9 +67,7 @@ def parse_args():
     parser.add_argument('--sandbox-token', required=True,
                         help='GIMC Sandbox authentication token')
     parser.add_argument('--build-dir', required=True,
-                        help='Directory for building code (must contain Makefile)')
-    parser.add_argument('--unit-test', required=True,
-                        help='Path to unit test script')
+                        help='Directory for building code')
     
     # Optional arguments
     parser.add_argument('--poll-interval', type=int, default=5,
@@ -82,15 +79,13 @@ def parse_args():
     
     # Set global configuration
     global ES_API_URL, ES_API_TOKEN, SANDBOX_URL, SANDBOX_TOKEN
-    global BUILD_DIR, MAKEFILE_PATH, UNIT_TEST_PATH, POLL_INTERVAL, BUILD_TIMEOUT
+    global BUILD_DIR, POLL_INTERVAL, BUILD_TIMEOUT
     
     ES_API_URL = args.es_url
     ES_API_TOKEN = args.es_token
     SANDBOX_URL = args.sandbox_url
     SANDBOX_TOKEN = args.sandbox_token
     BUILD_DIR = os.path.abspath(args.build_dir)
-    MAKEFILE_PATH = os.path.join(BUILD_DIR, 'Makefile')
-    UNIT_TEST_PATH = os.path.abspath(args.unit_test)
     POLL_INTERVAL = args.poll_interval
     BUILD_TIMEOUT = args.timeout
     
@@ -142,7 +137,7 @@ def parse_makefile(makefile_path):
 def check_for_build_task():
     """
     Poll ES API /vm/checkin endpoint for pending build tasks.
-    Returns tuple: (candidate_hash, code) or (None, None) if no tasks available
+    Returns tuple: (candidate_hash, code, makefile, unittest) or (None, None, None, None) if no tasks available
     """
     try:
         headers = {
@@ -157,24 +152,29 @@ def check_for_build_task():
         )
         
         if response.status_code == 200:
-            # Check if there's a candidate hash in headers
-            candidate_hash = response.headers.get('X-Candidate-Hash')
+            # Parse JSON response
+            data = response.json()
+            
+            # Check if there's a candidate_hash in response (indicating a task is available)
+            candidate_hash = data.get('candidate_hash')
             if candidate_hash:
-                # Code is in response body as base64
-                encoded_code = response.text
+                # Extract all fields from JSON response
+                encoded_code = data.get('code')
+                encoded_makefile = data.get('makefile')  # May be None
+                encoded_unittest = data.get('unittest')  # May be None
                 logging.info(f"Received build task for candidate: {candidate_hash}")
-                return candidate_hash, encoded_code
+                return candidate_hash, encoded_code, encoded_makefile, encoded_unittest
             else:
                 # No tasks available
                 logging.info("No build tasks available")
-                return None, None
+                return None, None, None, None
         else:
             logging.error(f"Error checking for build tasks: {response.status_code} - {response.text}")
-            return None, None
+            return None, None, None, None
     
     except Exception as e:
         logging.error(f"Exception while checking for build tasks: {e}")
-        return None, None
+        return None, None, None, None
 
 def update_candidate(candidate_hash, **kwargs):
     """
@@ -216,15 +216,16 @@ def update_candidate(candidate_hash, **kwargs):
 # Build and Test
 ###################################
 
-def clean_build_directory():
+def clean_build_directory(makefile_path=None):
     """Clean and recreate build directory"""
     if os.path.exists(BUILD_DIR):
-        # use make clean
-        try:
-            logging.info(f"Cleaning build directory: {BUILD_DIR}")
-            subprocess.run(['make', 'clean', '-f', MAKEFILE_PATH], cwd=BUILD_DIR)
-        except Exception as e:
-            logging.warning(f"Failed to clean build directory using make clean: {e}")
+        # use make clean if makefile is available
+        if makefile_path and os.path.exists(makefile_path):
+            try:
+                logging.info(f"Cleaning build directory: {BUILD_DIR}")
+                subprocess.run(['make', 'clean', '-f', makefile_path], cwd=BUILD_DIR)
+            except Exception as e:
+                logging.warning(f"Failed to clean build directory using make clean: {e}")
     else:
         os.makedirs(BUILD_DIR, exist_ok=True)
 
@@ -255,9 +256,49 @@ def save_code_to_file(encoded_code, source_file):
         logging.error(f"Error saving code to file: {e}")
         return False
 
-def compile_code():
+def save_makefile_and_unittest(encoded_makefile, encoded_unittest):
+    """
+    Decode and save makefile and unittest files to build directory.
+    
+    Args:
+        encoded_makefile: Base64 encoded Makefile content (or None)
+        encoded_unittest: Base64 encoded unit test content (or None)
+    
+    Returns:
+        tuple: (makefile_path, unittest_path) - paths to saved files or None if not provided
+    """
+    makefile_path = None
+    unittest_path = None
+    
+    try:
+        if encoded_makefile:
+            # Decode and save Makefile
+            decoded_makefile = base64.b64decode(encoded_makefile).decode('utf-8')
+            makefile_path = os.path.join(BUILD_DIR, 'Makefile')
+            with open(makefile_path, 'w') as f:
+                f.write(decoded_makefile)
+            logging.info(f"Saved Makefile to {makefile_path}")
+        
+        if encoded_unittest:
+            # Decode and save unit test
+            decoded_unittest = base64.b64decode(encoded_unittest).decode('utf-8')
+            unittest_path = os.path.join(BUILD_DIR, 'unit_test.py')
+            with open(unittest_path, 'w') as f:
+                f.write(decoded_unittest)
+            logging.info(f"Saved unit test to {unittest_path}")
+        
+        return makefile_path, unittest_path
+    
+    except Exception as e:
+        logging.error(f"Error saving makefile/unittest: {e}")
+        return None, None
+
+def compile_code(makefile_path):
     """
     Compile code using Makefile and compute F1 fitness from compiler output.
+    
+    Args:
+        makefile_path: Path to the Makefile to use
     
     Returns:
         tuple: (success: bool, F1: float, output_file: str or None, error_message: str or None)
@@ -293,7 +334,7 @@ def compile_code():
         logging.debug(f"Compiler output:\n{output}")
         
         # Check if compilation was successful (binary produced)
-        source_file, output_file = parse_makefile(MAKEFILE_PATH)
+        source_file, output_file = parse_makefile(makefile_path)
         output_path = os.path.join(BUILD_DIR, output_file)
         
         if os.path.exists(output_path):
@@ -312,13 +353,14 @@ def compile_code():
         logging.error(f"Error during compilation: {e}")
         return False, 0.0, None, f"Compilation error: {str(e)}"
 
-def run_unit_tests(binary_name):
+def run_unit_tests(binary_name, unittest_path):
     """
     Run unit tests and compute F2 fitness from pass rate.
     Imports and calls the unit test run() function directly.
     
     Args:
         binary_name: Name of the compiled binary
+        unittest_path: Path to the unit test script
     
     Returns:
         tuple: (F2: float, error_message: str or None)
@@ -328,7 +370,7 @@ def run_unit_tests(binary_name):
         binary_path = os.path.abspath(os.path.join(BUILD_DIR, binary_name))
         
         # Dynamically import the unit test module
-        spec = importlib.util.spec_from_file_location("unit_test", UNIT_TEST_PATH)
+        spec = importlib.util.spec_from_file_location("unit_test", unittest_path)
         unit_test_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(unit_test_module)
         
@@ -418,29 +460,34 @@ def submit_to_sandbox(binary_name):
 # Main Build Loop
 ###################################
 
-def process_build_task(candidate_hash, encoded_code):
+def process_build_task(candidate_hash, encoded_code, encoded_makefile, encoded_unittest):
     """
     Process a single build task: decode, compile, test, submit.
     
     Args:
         candidate_hash: Hash of the candidate
         encoded_code: Base64 encoded source code
+        encoded_makefile: Base64 encoded Makefile (or None)
+        encoded_unittest: Base64 encoded unit test (or None)
     
     Returns:
         bool: True if VM needs reset (binary was submitted), False otherwise
     """
     try:
-        # Check if Makefile exists
-        if not os.path.exists(MAKEFILE_PATH):
-            logging.error(f"Makefile not found at {MAKEFILE_PATH}")
-            update_candidate(candidate_hash, status=4, error_message="Makefile not configured", clean=True)
+        # Save makefile and unittest to files
+        makefile_path, unittest_path = save_makefile_and_unittest(encoded_makefile, encoded_unittest)
+        
+        # Check if Makefile was provided
+        if not makefile_path:
+            logging.error("Makefile not provided in task")
+            update_candidate(candidate_hash, status=4, error_message="Makefile not provided", clean=True)
             return False
         
         # Parse Makefile to get filenames
-        source_file, output_file = parse_makefile(MAKEFILE_PATH)
+        source_file, output_file = parse_makefile(makefile_path)
         
         # Clean build directory
-        clean_build_directory()
+        clean_build_directory(makefile_path)
         
         # Save code to file
         if not save_code_to_file(encoded_code, source_file):
@@ -448,7 +495,7 @@ def process_build_task(candidate_hash, encoded_code):
             return False
         
         # Compile code
-        compile_success, F1, binary_name, compile_error = compile_code()
+        compile_success, F1, binary_name, compile_error = compile_code(makefile_path)
         
         if not compile_success:
             # No binary produced - report F1, complete, and clean up
@@ -461,16 +508,20 @@ def process_build_task(candidate_hash, encoded_code):
                 clean=True  # Signal ES that we're cleaning up
             )
             # Clean up files
-            clean_build_directory()
+            clean_build_directory(makefile_path)
             logging.info("Compilation failed - cleaned up and ready for next task")
             return False  # VM doesn't need reset
         
         # Binary produced - update F1 and continue
         update_candidate(candidate_hash, F1=F1)
         
-        # Run unit tests
-        F2, test_error = run_unit_tests(binary_name)
-        update_candidate(candidate_hash, F2=F2)
+        # Run unit tests if unittest was provided
+        if unittest_path:
+            F2, test_error = run_unit_tests(binary_name, unittest_path)
+            update_candidate(candidate_hash, F2=F2)
+        else:
+            logging.warning("Unit test not provided, skipping tests")
+            update_candidate(candidate_hash, F2=0.0)
         
         # Submit to sandbox for dynamic analysis
         analysis_id = submit_to_sandbox(binary_name)
@@ -513,12 +564,9 @@ def main():
     logging.info(f"ES API URL: {ES_API_URL}")
     logging.info(f"Sandbox URL: {SANDBOX_URL}")
     logging.info(f"Build directory: {BUILD_DIR}")
-    logging.info(f"Makefile path: {MAKEFILE_PATH}")
-    logging.info(f"Unit test path: {UNIT_TEST_PATH}")
     logging.info(f"Poll interval: {POLL_INTERVAL}s")
     
-    # Note: Makefile and unit test file will be provided as configuration
-    # The agent will check for their existence when processing each task
+    # Note: Makefile and unit test file will be received from ES for each task
     
     # Poll for tasks and process them
     # Exit when a binary is successfully compiled (VM needs reset)
@@ -526,12 +574,12 @@ def main():
     while True:
         try:
             # Check for build task
-            candidate_hash, encoded_code = check_for_build_task()
+            candidate_hash, encoded_code, encoded_makefile, encoded_unittest = check_for_build_task()
             
             if candidate_hash:
                 # Process build task
                 logging.info(f"Processing candidate: {candidate_hash}")
-                needs_vm_reset = process_build_task(candidate_hash, encoded_code)
+                needs_vm_reset = process_build_task(candidate_hash, encoded_code, encoded_makefile, encoded_unittest)
                 logging.info(f"Finished processing candidate: {candidate_hash}")
                 
                 # Exit if binary was compiled (VM needs reset)

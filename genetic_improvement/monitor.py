@@ -207,28 +207,6 @@ def classify_report(report_text, target_class):
 # Analysis Processing
 ###################################
 
-def get_candidate_class_tag(candidate):
-    """
-    Get the class tag value from a candidate.
-    
-    Args:
-        candidate: Candidate object
-    
-    Returns:
-        Class tag value or None
-    """
-    try:
-        # Find 'class' tag directly on candidate
-        for tag in candidate.tags:
-            if tag.key == 'class':
-                return tag.value
-        
-        return None
-    
-    except Exception as e:
-        logging.error(f"Error getting candidate class tag: {e}")
-        return None
-
 def process_completed_analysis(candidate):
     """
     Process a candidate with completed analysis.
@@ -265,24 +243,24 @@ def process_completed_analysis(candidate):
             logging.info(f"Analysis {candidate.analysis_id} not complete yet (status={analysis.status})")
             return
         
-        # Get class tag to determine target class
-        class_tag = get_candidate_class_tag(candidate)
-        if not class_tag:
-            logging.error(f"No class tag found for candidate {candidate.hash}")
+        # Get classification to determine target class
+        classification = candidate.classification
+        if not classification:
+            logging.error(f"No classification found for candidate {candidate.hash}")
             candidate.status = 4
             candidate.F3 = 0
-            candidate.error_message = "No class tag found"
+            candidate.error_message = "No classification found"
             ES_SESSION.commit()
             return
         
-        # Map class tag to index using global SIGNATURES list
+        # Map classification to index using global SIGNATURES list
         try:
-            target_class = SIGNATURES.index(class_tag)
+            target_class = SIGNATURES.index(classification)
         except ValueError:
-            logging.error(f"Unknown class tag: {class_tag}. Expected one of {SIGNATURES}")
+            logging.error(f"Unknown classification: {classification}. Expected one of {SIGNATURES}")
             candidate.status = 4
             candidate.F3 = 0
-            candidate.error_message = f"Unknown class tag: {class_tag}"
+            candidate.error_message = f"Unknown classification: {classification}"
             ES_SESSION.commit()
             return
         
@@ -312,7 +290,7 @@ def process_completed_analysis(candidate):
         # Classify report
         F3 = classify_report(preprocessed_text, target_class)
         
-        logging.info(f"Candidate {candidate.hash} classified with F3={F3:.4f} for class {class_tag}")
+        logging.info(f"Candidate {candidate.hash} classified with F3={F3:.4f} for class {classification}")
         
         # Update candidate
         candidate.F3 = F3

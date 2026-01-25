@@ -30,6 +30,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Submit code for evaluation')
     parser.add_argument('code_file', help='Path to the code file to submit')
     parser.add_argument('--class', dest='class_tag', help='Classification tag value (e.g., malware, benign)')
+    parser.add_argument('--makefile', help='Path to the Makefile to submit')
+    parser.add_argument('--unittest', help='Path to the unit test file to submit')
     args = parser.parse_args()
 
     code_file_path = args.code_file
@@ -49,6 +51,20 @@ if __name__ == '__main__':
     # Add class tag if provided
     if args.class_tag:
         payload['class'] = args.class_tag
+    
+    # Add makefile if provided
+    if args.makefile:
+        with open(args.makefile, 'r') as makefile:
+            makefile_content = makefile.read()
+        encoded_makefile = base64.b64encode(makefile_content.encode('utf-8')).decode('utf-8')
+        payload['makefile'] = encoded_makefile
+    
+    # Add unittest if provided
+    if args.unittest:
+        with open(args.unittest, 'r') as unittest:
+            unittest_content = unittest.read()
+        encoded_unittest = base64.b64encode(unittest_content.encode('utf-8')).decode('utf-8')
+        payload['unittest'] = encoded_unittest
     
     headers = {"Authorization": f"Bearer {TOKEN}"}
 

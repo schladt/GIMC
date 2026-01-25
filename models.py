@@ -50,6 +50,9 @@ class Candidate(Base):
     date_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     error_message = Column(Text)
     build_vm = Column(String)  # VM name assigned to this build
+    makefile = Column(Text)  # Makefile for building the candidate
+    unit_test = Column(Text)  # Unit test code
+    classification = Column(String(64))  # Classification or class label
     
     # Relationships
     tags = relationship('Tag', secondary=candidate_tag, backref='candidates')
