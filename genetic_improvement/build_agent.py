@@ -246,7 +246,7 @@ def save_code_to_file(encoded_code, source_file):
         
         # Save to file
         source_path = os.path.join(BUILD_DIR, source_file)
-        with open(source_path, 'w') as f:
+        with open(source_path, 'w', encoding='utf-8') as f:
             f.write(decoded_code)
         
         logging.info(f"Saved code to {source_path}")
