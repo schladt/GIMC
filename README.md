@@ -59,20 +59,27 @@ Advanced machine learning models that classify malware families using dynamic an
 - **LSTM**: Sequential behavior analysis
 - **BERT/Transformer**: Advanced contextual understanding
 
-### 🧬 [Genetic Improvement (GI)](./gi/) - Code Evolution Engine
-AST-based genetic algorithms that evolve code prototypes to match target behavioral signatures.
+### 🧬 [Genetic Improvement](./genetic_improvement/) - Code Evolution & Evaluation
+Complete pipeline for evolving and evaluating code candidates through compilation, testing, and behavioral analysis.
+
+**Key Components:**
+- **Evaluation Server**: RESTful API for candidate submission and fitness tracking
+- **Build Agent**: VM-based compilation and unit testing with MinGW
+- **Monitor**: ML-based behavioral classification and VM timeout management
+- **Genome Engine**: AST-level code manipulation using srcML
 
 **Key Features:**
-- AST-level code manipulation using srcML
-- Composite fitness evaluation (compile + tests + behavioral score)
-- Multi-stage evaluation pipeline with surrogate scoring
-- High-throughput evolution with parallelization support
+- Multi-stage fitness evaluation (F1: compile quality, F2: test pass rate, F3: behavioral score)
+- Automatic makefile and unit test distribution to build agents
+- Composite fitness scoring with surrogate optimization
+- High-throughput evolution with VM pool parallelization
+- Candidate database tracking with SQLAlchemy ORM
 
 ### 📦 [Sandbox](./sandbox/) - High-Throughput Dynamic Analysis
 Lightweight, scalable malware analysis sandbox designed for massive behavioral evaluation loops.
 
 **Key Features:**
-- High-throughput execution (~19.58s/sample average)
+- High-throughput execution (~13.58s/sample average)
 - Multi-VM orchestration (VMware/libvirt support)
 - Standardized telemetry collection (Procmon + Sysmon)
 - Isolated execution environment with snapshot restoration
@@ -83,43 +90,131 @@ Lightweight, scalable malware analysis sandbox designed for massive behavioral e
 - Supports 12+ concurrent Windows 10 VMs
 - Configurable VM pools and analysis timeouts
 
-### 🔬 [Prototypes](./prototypes/) - Research Components  
-Experimental code and proof-of-concept implementations for various GIMC research objectives.
+### 🔬 [Behavioral Subsets](./behavioral_subsets/) - Malware TTP Implementations
+Reference implementations of specific malware Tactics, Techniques, and Procedures (TTPs) for genetic improvement research.
 
-**Research Areas:**
-- LLM prompt engineering for malware procedure generation
-- Unit test frameworks for TTP validation
-- Behavioral analysis utilities and telemetry processing
-- Fitness function development and optimization
+**Current Focus:**
+- **Scheduled Execution**: Task scheduling via WMI, COM, and CMD implementations
+- Unit test frameworks for behavioral validation
+- Makefiles for MinGW cross-compilation to Windows binaries
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 ```bash
-# Python 3.8+ with pip
+# Python 3.8+ with virtual environment
+python -m venv env
+source env/bin/activate  # On Windows: env\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Additional ML dependencies
-pip install torch torchvision
-pip install transformers tokenizers
+# Additional ML dependencies for classifier
+pip install torch torchvision transformers tokenizers
+
+# Database setup (PostgreSQL required)
+# Install PostgreSQL and create database:
+createdb gimc
 ```
 
 ### Configuration
 
-Create `settings.json` in the project root:
+Create `settings.json` in the project root (not included in repo for security):
 
 ```json
 {
-    "openai_api_key": "{{ YOUR OPENAI API KEY }}",
-    "data_path": "/path/to/your/data/",
-    "sqlalchemy_database_uri": "{{ YOUR DATABASE CONNECTION STRING }}",
-    "sandbox_token": "{{ YOUR SECRET TOKEN }}",
-    "srcml_client": "/path/to/srcML/bin/srcml",
-    "sandbox_url": "http://127.0.0.1:5000",
-    "evaluation_server": "http://127.0.0.1:5090"
+    "openai_api_key": "sk-your-openai-api-key-here",
+    "data_path": "/mnt/data/gimc",
+    "sqlalchemy_database_uri": "postgresql://gimc_user:gimc_dev_pass@localhost/gimc",
+    "sandbox_token": "your_secure_random_token_here",
+    "srcml_client": "/usr/local/bin/srcml",
+    "sandbox_url": "http://192.168.122.1:5000",
+    "evaluation_server": "http://192.168.122.1:5050",
+    "launcher": {
+        "eval_server": {
+            "interface": "192.168.122.1",
+            "port": "5050"
+        },
+        "es_monitor": {
+            "classifier": "/mnt/data/gimc/classifier/model_data/cnn4bsi_checkpoint.pth",
+            "tokenizer": "/mnt/data/gimc/classifier/model_data/mal-reformer",
+            "signatures": "wmi,com,cmd,benign"
+        },
+        "sandbox_server": {
+            "interface": "192.168.122.1",
+            "port": "5000"
+        },
+        "sandbox_monitor": {}
+    }
 }
 ```
+
+**Configuration Notes:**
+- `data_path`: Directory for storing models, datasets, and analysis reports
+- `sqlalchemy_database_uri`: PostgreSQL connection string for unified database
+- `sandbox_token`: Shared authentication token for API security
+- `srcml_client`: Path to srcML binary for AST manipulation
+- `launcher`: Service configurations for the system launcher (see below)
+
+### System Launch
+
+**Option 1: Single-Command Launcher (Recommended)**
+
+Start all GIMC services with colored output:
+
+```bash
+python launch_gimc.py
+```
+
+This launches:
+- 🟢 **Evaluation Server** - Manages candidate submission and fitness tracking
+- 🔵 **ES Monitor** - Performs ML classification and VM management
+- 🟡 **Sandbox Server** - Accepts samples for dynamic analysis
+- 🟣 **Sandbox Monitor** - Orchestrates VM execution and telemetry collection
+
+Press `Ctrl+C` to gracefully stop all services.
+
+**Option 2: Manual Service Launch**
+
+Individual components can be started separately for debugging:
+
+```bash
+# Terminal 1: Evaluation Server
+python -m genetic_improvement.evaluation_server 192.168.122.1 5050
+
+# Terminal 2: ES Monitor
+python -m genetic_improvement.monitor \
+    --classifier /path/to/cnn4bsi_checkpoint.pth \
+    --tokenizer /path/to/mal-reformer \
+    --signatures wmi,com,cmd,benign
+
+# Terminal 3: Sandbox Server
+python -m sandbox.sandbox_server 192.168.122.1 5000
+
+# Terminal 4: Sandbox Monitor
+python -m sandbox.monitor
+```
+
+### Submit a Candidate
+
+Once services are running, submit code for evaluation:
+
+```bash
+python -m genetic_improvement.submit_code \
+    --class wmi \
+    --makefile behavioral_subsets/scheduled_execution/wmi/Makefile \
+    --unittest behavioral_subsets/scheduled_execution/test_scheduled_execution.py \
+    ~/samples/wmi_persistence.cpp
+```
+
+The system will:
+1. 📝 Store candidate in database with makefile, unittest, and classification
+2. 🏗️ Distribute to build agent for compilation (F1 fitness)
+3. ✅ Execute unit tests (F2 fitness)
+4. 🔬 Submit binary to sandbox for dynamic analysis
+5. 🤖 Classify behavior using ML model (F3 fitness)
+6. ✨ Return composite fitness score
 
 ### Component Setup
 
@@ -225,10 +320,10 @@ We welcome contributions to advance defensive cybersecurity research:
 This project is released under an academic research license. If you use GIMC in your research, please cite:
 
 ```bibtex
-@misc{gimc2024,
+@misc{gimc2025,
   title={Genetically Improved Malicious Code: Using AI to Generate and Evolve Malware Behaviors for Defensive Research},
   author={Schladt, Michael},
-  year={2024},
+  year={2025},
   institution={University of Cincinnati},
   note={Doctoral Research Project}
 }
