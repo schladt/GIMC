@@ -36,7 +36,7 @@ ES_API_URL = None
 ES_API_TOKEN = None
 SANDBOX_URL = None
 SANDBOX_TOKEN = None
-BUILD_DIR = "./build_dir"
+BUILD_DIR = "build_dir"
 
 POLL_INTERVAL = 5  # seconds
 BUILD_TIMEOUT = 300  # seconds
@@ -472,20 +472,20 @@ def process_build_task(candidate_hash, encoded_code, encoded_makefile, encoded_u
         bool: True if VM needs reset (binary was submitted), False otherwise
     """
     try:
-        # Save makefile and unittest to files
-        makefile_path, unittest_path = save_makefile_and_unittest(encoded_makefile, encoded_unittest)
-        
         # Check if Makefile was provided
-        if not makefile_path:
+        if not encoded_makefile:
             logging.error("Makefile not provided in task")
             update_candidate(candidate_hash, status=4, error_message="Makefile not provided", clean=True)
             return False
         
+        # Clean build directory first (completely remove and recreate)
+        clean_build_directory()
+        
+        # Save makefile and unittest to files (after directory is created)
+        makefile_path, unittest_path = save_makefile_and_unittest(encoded_makefile, encoded_unittest)
+        
         # Parse Makefile to get filenames
         source_file, output_file = parse_makefile(makefile_path)
-        
-        # Clean build directory (completely remove and recreate)
-        clean_build_directory()
         
         # Save code to file
         if not save_code_to_file(encoded_code, source_file):
