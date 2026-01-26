@@ -24,6 +24,7 @@ import re
 import requests
 import argparse
 import importlib.util
+import shutil
 from pathlib import Path
 
 ###################################
@@ -35,7 +36,7 @@ ES_API_URL = None
 ES_API_TOKEN = None
 SANDBOX_URL = None
 SANDBOX_TOKEN = None
-BUILD_DIR = None
+BUILD_DIR = "./build_dir"
 
 POLL_INTERVAL = 5  # seconds
 BUILD_TIMEOUT = 300  # seconds
@@ -66,8 +67,6 @@ def parse_args():
                         help='GIMC Sandbox URL (e.g., http://192.168.122.1:8000)')
     parser.add_argument('--sandbox-token', required=True,
                         help='GIMC Sandbox authentication token')
-    parser.add_argument('--build-dir', required=True,
-                        help='Directory for building code')
     
     # Optional arguments
     parser.add_argument('--poll-interval', type=int, default=5,
@@ -79,13 +78,12 @@ def parse_args():
     
     # Set global configuration
     global ES_API_URL, ES_API_TOKEN, SANDBOX_URL, SANDBOX_TOKEN
-    global BUILD_DIR, POLL_INTERVAL, BUILD_TIMEOUT
+    global POLL_INTERVAL, BUILD_TIMEOUT
     
     ES_API_URL = args.es_url
     ES_API_TOKEN = args.es_token
     SANDBOX_URL = args.sandbox_url
     SANDBOX_TOKEN = args.sandbox_token
-    BUILD_DIR = os.path.abspath(args.build_dir)
     POLL_INTERVAL = args.poll_interval
     BUILD_TIMEOUT = args.timeout
     
@@ -216,18 +214,18 @@ def update_candidate(candidate_hash, **kwargs):
 # Build and Test
 ###################################
 
-def clean_build_directory(makefile_path=None):
-    """Clean and recreate build directory"""
-    if os.path.exists(BUILD_DIR):
-        # use make clean if makefile is available
-        if makefile_path and os.path.exists(makefile_path):
-            try:
-                logging.info(f"Cleaning build directory: {BUILD_DIR}")
-                subprocess.run(['make', 'clean', '-f', makefile_path], cwd=BUILD_DIR)
-            except Exception as e:
-                logging.warning(f"Failed to clean build directory using make clean: {e}")
-    else:
+def clean_build_directory():
+    """Completely remove and recreate build directory"""
+    try:
+        if os.path.exists(BUILD_DIR):
+            logging.info(f"Removing existing build directory: {BUILD_DIR}")
+            shutil.rmtree(BUILD_DIR)
+        
+        logging.info(f"Creating fresh build directory: {BUILD_DIR}")
         os.makedirs(BUILD_DIR, exist_ok=True)
+    except Exception as e:
+        logging.error(f"Error cleaning build directory: {e}")
+        raise
 
 def save_code_to_file(encoded_code, source_file):
     """
@@ -486,8 +484,8 @@ def process_build_task(candidate_hash, encoded_code, encoded_makefile, encoded_u
         # Parse Makefile to get filenames
         source_file, output_file = parse_makefile(makefile_path)
         
-        # Clean build directory
-        clean_build_directory(makefile_path)
+        # Clean build directory (completely remove and recreate)
+        clean_build_directory()
         
         # Save code to file
         if not save_code_to_file(encoded_code, source_file):
@@ -508,7 +506,7 @@ def process_build_task(candidate_hash, encoded_code, encoded_makefile, encoded_u
                 clean=True  # Signal ES that we're cleaning up
             )
             # Clean up files
-            clean_build_directory(makefile_path)
+            clean_build_directory()
             logging.info("Compilation failed - cleaned up and ready for next task")
             return False  # VM doesn't need reset
         
