@@ -37,7 +37,7 @@ from .monitor import virsh_get_running_vms, virsh_reset_snapshot, virsh_start_vm
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
 )
 
@@ -315,7 +315,7 @@ def vm_checkin():
         logging.error("requesting IP address not registered in configuration file")
         return {"error": "requesting IP address not registered in configuration file"}, 400
 
-    logging.info(f"VM {vm_name} checking in")
+    logging.debug(f"VM {vm_name} checking in")
 
     # Check if analysis tasks are available
     session = Session()
@@ -516,8 +516,7 @@ def main():
         print("Usage: python -m sandbox.sandbox_server <interface address> <port>")
         sys.exit(1)
 
-    app.run(debug=True, host=interface, port=port, threaded=True)
-
+    app.run(host=interface, port=port, threaded=True)
 
 if __name__ == "__main__":
     main()

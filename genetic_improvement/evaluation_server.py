@@ -153,7 +153,7 @@ def submit():
         session.add(candidate)
         session.commit()
         session.close()
-        return jsonify({'status': 'success', 'message': 'Code received for evaluation'}), 200
+        return jsonify({'status': 'success', 'message': 'Code received for evaluation', 'candidate_hash': code_hash}), 200
         
     except Exception as e:
         session.rollback()
@@ -179,7 +179,7 @@ def vm_checkin():
         logging.error("requesting IP address not registered in configuration file")
         return jsonify({"error": "requesting IP address not registered in configuration file"}), 400
 
-    logging.info(f"Build VM {vm_name} checking in")
+    logging.debug(f"Build VM {vm_name} checking in")
 
     # create a new database session
     session = Session()
