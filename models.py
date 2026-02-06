@@ -58,17 +58,6 @@ class Candidate(Base):
     tags = relationship('Tag', secondary=candidate_tag, backref='candidates')
     samples = relationship('Sample', secondary=candidate_sample, backref='candidates')
 
-class Ingredient(Base):
-    __tablename__ = 'ingredient'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    candidate = Column(String, ForeignKey('candidate.hash'), nullable=False)
-    tag = Column(String)
-    position = Column(Integer)
-    depth = Column(Integer)
-    
-    # create unique constraint
-    __table_args__ = (UniqueConstraint('candidate', 'position', name='unique_ingredient'),)
-
 ###################################
 # Sandbox Models (from sandbox/models.py)
 ###################################

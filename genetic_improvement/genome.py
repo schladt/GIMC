@@ -12,7 +12,7 @@ import math
 import xml.etree.ElementTree as ET
 from pylibsrcml import srcMLArchive, srcMLArchiveWriteString, srcMLArchiveRead, srcMLUnit
 
-from models import Candidate, Ingredient
+from models import Candidate
 
 def find_depth(elem, depth=0):
     """Find the depth of an element in the XML tree."""
@@ -62,11 +62,11 @@ class Edit:
     """
     _edit_types = ['insert', 'delete', 'replace']
 
-    def __init__(self, edit_type: str, prototype_hash: str, prototype_position: int):
+    def __init__(self, edit_type: str, candidate_hash: str, candidate_position: int):
         self._edit_type = None
         self.edit_type = edit_type # must be in ['insert', 'delete', 'replace']
-        self.prototype_hash = prototype_hash # hash of the prototype containing the ingredient (insert and replace)
-        self.prototype_position = prototype_position # position of the ingredient in the prototype (insert and replace only)
+        self.candidate_hash = candidate_hash # hash of the candidate containing the code element (insert and replace)
+        self.candidate_position = candidate_position # position of the element in the candidate (insert and replace only)
     
     @property
     def edit_type(self):
@@ -81,7 +81,7 @@ class Edit:
 
     def __str__(self):
         if self.edit_type in ('replace', 'insert'):
-            return f"Edit: {self.edit_type} with position {self.prototype_position} in prototype {self.prototype_hash}"
+            return f"Edit: {self.edit_type} with position {self.candidate_position} in candidate {self.candidate_hash}"
         elif self.edit_type == 'delete':
             return f"Edit: {self.edit_type}"
         
@@ -89,31 +89,31 @@ class Chromosome:
     """
     A class representing a chromosome
     """
-    def __init__(self, tag, position, prototype_hash, depth, weight=1, parents = None, edits = None):
+    def __init__(self, tag, position, candidate_hash, depth, weight=1, parents = None, edits = None):
         self.tag = tag
         self.position = position
         self.parents = parents if parents is not None else []
         self.edits = edits if edits is not None else []
-        self.prototype = prototype_hash
+        self.candidate_hash = candidate_hash
         self.weight = weight
         self.depth = depth
 
     def __str__(self):
         if self.edits:
             edit_str = "\n\t".join([edit.__str__() for edit in self.edits])
-            return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits:\n\t{edit_str}"
+            return f"Position: {self.position}, Tag: '{self.tag}', Candidate {self.candidate_hash}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits:\n\t{edit_str}"
         else:
-            return f"Position: {self.position}, Tag: '{self.tag}', Prototype {self.prototype}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits: None"
+            return f"Position: {self.position}, Tag: '{self.tag}', Candidate {self.candidate_hash}, Depth, {self.depth}, Weight: {self.weight}, Parents: {self.parents}, Edits: None"
 
 class Genome:
     """
     Class representing a genome
     """       
 
-    def __init__(self, prototype_hash, build_genome=False, session=None):
+    def __init__(self, candidate_hash, build_genome=False, session=None):
 
         # load class variables
-        self.prototype_hash = prototype_hash
+        self.candidate_hash = candidate_hash
         self.chromosomes = []
         self.orig_elems = None
         self.modified_tree = None
@@ -130,14 +130,14 @@ class Genome:
 
     def build_genome(self, session):
         """
-        Build a genome from a prototype hash. Assuming that XML is stored in the database
+        Build a genome from a candidate hash.
         
         - Returns:
             genome (list): A list of chromosomes
         """
 
         # Get the candidate
-        candidate = session.query(Candidate).filter(Candidate.hash == self.prototype_hash).first()
+        candidate = session.query(Candidate).filter(Candidate.hash == self.candidate_hash).first()
 
         # parse the xml file
         tree = ET.ElementTree(ET.fromstring(candidate.xml))
@@ -164,7 +164,7 @@ class Genome:
                 current_element = parent_map[current_element]
             tag = element.tag.split("}")[1]
             depth = find_depth(element)
-            chromosome = Chromosome(tag, position, self.prototype_hash, depth=depth, parents=parents)
+            chromosome = Chromosome(tag, position, self.candidate_hash, depth=depth, parents=parents)
             genome.append(chromosome)
             position += 1
 
@@ -182,11 +182,11 @@ class Genome:
                     # check if in dirty list or previous edits on parents have already replaced the element
                     if (chromosome.position not in dirty_list) and (not bool(set(chromosome.parents) & set(dirty_list))):
                         # get the original and donor element
-                        donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.prototype_hash).first()
+                        donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.candidate_hash).first()
                         donor_tree = ET.ElementTree(ET.fromstring(donor_candidate.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
                         # replace the element
-                        donor_elem = donor_elems[edit.prototype_position]
+                        donor_elem = donor_elems[edit.candidate_position]
                         self.modified_tree = replace_element(self.modified_tree, self.orig_elems[chromosome.position], donor_elem)
                         dirty_list.append(chromosome.position)
 
@@ -261,72 +261,6 @@ class Genome:
         else:
             read_archive.close()
             raise ValueError("Failed to parse XML and extract source code")    
-    
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    def get_code(self, language='c', srcML_path=None, session=None):
-        """
-        Returns the code associated with the genome's modified tree. Also stores the code in self.code
-        
-        Args:
-            language (str): the language of the code to return (default: 'c')
-            srcML_path (str): the path to the srcML executable
-            session (sqlalchemy.orm.session.Session): the database session
-        """
-        
-        if srcML_path is None:
-            raise ValueError("srcml_path must be provided to get code")
-
-        if session is None:
-            raise ValueError("Session must be provided to get code")
-
-        if language  != 'c':
-            raise ValueError("Only C code is currently supported at this time")
-
-        # apply edits
-        self.apply_edits(session=session)
-
-        # create random tmp dir if not exist
-        tmp_dir = os.urandom(8).hex()
-        tmp_dir = f'tmp_{tmp_dir}'
-        if not os.path.exists(tmp_dir):
-            os.makedirs(tmp_dir)
-
-        # write the new bfs genome to a new xml file
-        xml_filepath = os.path.join(tmp_dir, 'proto.xml')
-        self.modified_tree.write(xml_filepath)
-
-        # run srcML to get c code (python bindings exist but are not updated)
-        code_filepath = os.path.join(tmp_dir, 'proto.c')
-
-        p = subprocess.Popen([srcML_path, xml_filepath, '-o', code_filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = p.communicate()
-        if p.returncode != 0:
-            raise ValueError(f"Error running srcML: {err}")
-        
-        # read the code from the file
-        with open(code_filepath, 'r') as f:
-            code = f.read()
-        
-        # remove the tmp dir
-        shutil.rmtree(tmp_dir)
-
-        self.code = code
-        return code
     
     def submit_to_evaluation(self, evaluation_server=None, sandbox=False):
         """
