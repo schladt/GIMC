@@ -336,3 +336,4 @@ class Genome:
         # combine the fitnesses
         self.fitness = (compile_fitness + unit_test_fitness + edit_fitness) / 3
         return self.fitness
+

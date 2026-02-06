@@ -66,9 +66,9 @@ def stream_output(process, name, color, label):
     """Stream process output with color prefix"""
     reset = COLORS['reset']
     try:
-        for line in iter(process.stdout.readline, b''):
+        for line in iter(process.stdout.readline, ''):
             if line:
-                decoded_line = line.decode('utf-8', errors='replace').rstrip()
+                decoded_line = line.rstrip()
                 print(f"{color}{label}{reset} {decoded_line}", flush=True)
     except Exception as e:
         print(f"{color}{label}{reset} Error reading output: {e}", flush=True)
@@ -81,6 +81,7 @@ def start_service(name, config):
             config['cmd'],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            text=True,
             bufsize=1
         )
         processes[name] = process
