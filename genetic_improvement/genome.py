@@ -10,6 +10,7 @@ import io
 import json
 import math
 import xml.etree.ElementTree as ET
+from pylibsrcml import srcMLArchive, srcMLArchiveWriteString, srcMLArchiveRead, srcMLUnit
 
 from models import Candidate, Ingredient
 
@@ -214,6 +215,68 @@ class Genome:
                             for elem in self.modified_tree.getroot().iter():
                                 if elem.tag.split("}")[1] == 'name' and elem.text == old_name:
                                     elem.text = new_name
+    
+    def to_xml(code: str, language: str) -> str:
+        """
+        Convert source code to srcML XML format.
+        
+        Args:
+            code: Source code string
+            language: Programming language (e.g., "C++", "C", "Java")
+        
+        Returns:
+            XML string representation of the code
+        """
+        archive = srcMLArchiveWriteString()
+        archive.set_language(language)
+        archive.enable_solitary_unit()
+        
+        unit = archive.unit_create()
+        unit.parse_memory(code)
+        
+        archive.write_unit(unit)
+        xml_output = archive.close()
+        
+        return xml_output
+
+
+    def to_code(xml: str) -> str:
+        """
+        Convert srcML XML back to source code.
+        
+        Args:
+            xml: srcML XML string
+            language: Programming language (e.g., "C++", "C", "Java")
+        
+        Returns:
+            Source code string
+        """
+        read_archive = srcMLArchiveRead(xml, string_read_mode='source')
+        unit = read_archive.read_unit()
+        
+        if unit:
+            code = unit.get_src()
+            read_archive.close()
+            return code
+        else:
+            read_archive.close()
+            raise ValueError("Failed to parse XML and extract source code")    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     def get_code(self, language='c', srcML_path=None, session=None):
         """
