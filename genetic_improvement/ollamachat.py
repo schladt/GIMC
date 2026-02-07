@@ -5,11 +5,12 @@ import sys
 import json
 import re
 import requests
+import base64
 from typing import List, Dict, Optional
 
 # add current directory to sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from config import CHAT_ENDPOINT  
+from genetic_improvement.config import CHAT_ENDPOINT, SANDBOX_TOKEN, EVALUATION_SERVER
 
 
 Message = Dict[str, str]  # {"role": "system"|"user"|"assistant", "content": "..."}
@@ -125,3 +126,50 @@ class OllamaChat:
                 })
         
         return variants
+    
+    def submit_variants(variants, classification):
+        """
+        Submit variants to the evaluation server.
+        """
+
+        from config import UNIT_TEST_CODE
+
+        candidates = []
+        for variant in variants:
+            code_content = variant['code']
+            makefile_content = variant['makefile']
+
+            # Base64 encode the code and makefile content
+            encoded_code = base64.b64encode(code_content.encode('utf-8')).decode('utf-8')
+            encoded_makefile = base64.b64encode(makefile_content.encode('utf-8')).decode('utf-8')
+            encoded_unittest = base64.b64encode(UNIT_TEST_CODE.encode('utf-8')).decode('utf-8')
+
+            # Prepare the payload
+            payload = {
+                'code': encoded_code,
+                'class': classification,
+                'makefile': encoded_makefile,
+                'unittest': encoded_unittest
+            }
+            
+            headers = {"Authorization": f"Bearer {SANDBOX_TOKEN}"}
+
+            # Send the POST request to the evaluation server
+            try:
+                response = requests.post(
+                    EVALUATION_SERVER + '/submit',
+                    json=payload,
+                    headers=headers
+                )
+                response.raise_for_status()
+                # get candidate_hash from response and retrieve candidate details
+                response_data = response.json()
+                candidate_hash = response_data.get('candidate_hash')
+                candidates.append(candidate_hash)
+                print("Code submitted successfully: ", candidate_hash)
+                        
+            except requests.exceptions.RequestException as e:
+                print("Failed to submit variant code to evaluation server. Check logs for details.")
+                candidates.append(None)
+        
+        return candidates
