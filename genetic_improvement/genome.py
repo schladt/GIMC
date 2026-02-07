@@ -13,6 +13,13 @@ import xml.etree.ElementTree as ET
 from pylibsrcml import srcMLArchive, srcMLArchiveWriteString, srcMLArchiveRead, srcMLUnit
 
 from models import Candidate
+from genetic_improvement.config import Config
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+engine = create_engine(Config.SQLALCHEMY_DATABASE_URI, echo=False)
+Session = sessionmaker(bind=engine)
 
 def find_depth(elem, depth=0):
     """Find the depth of an element in the XML tree."""
@@ -110,7 +117,7 @@ class Genome:
     Class representing a genome
     """       
 
-    def __init__(self, candidate_hash, build_genome=False, session=None):
+    def __init__(self, candidate_hash, build_genome=False):
 
         # load class variables
         self.candidate_hash = candidate_hash
@@ -120,24 +127,36 @@ class Genome:
         self.fitness = 0
         self.code = None
         if build_genome:
-            if session is None:
-                raise ValueError("Session must be provided to build genome")
-            self.build_genome(session=session)
+            self.build_genome()
 
     def __str__(self):
         return "\n".join([chromosome.__str__() for chromosome in self.chromosomes])
 
-
-    def build_genome(self, session):
+    def get_candidate(self):
         """
-        Build a genome from a candidate hash.
+        Get the candidate associated with this genome.
+
+        - Returns: 
+            The candidate object
+        """
+        candidate = None
+
+        with Session() as session:
+            candidate = session.query(Candidate).filter(Candidate.hash == self.candidate_hash).first()
+        
+        return candidate
+
+    def build_genome(self):
+        """
+        Build a genome from self.candidate_hash
         
         - Returns:
             genome (list): A list of chromosomes
         """
 
         # Get the candidate
-        candidate = session.query(Candidate).filter(Candidate.hash == self.candidate_hash).first()
+        with Session() as session:
+            candidate = session.query(Candidate).filter(Candidate.hash == self.candidate_hash).first()
 
         # parse the xml file
         tree = ET.ElementTree(ET.fromstring(candidate.xml))
@@ -170,7 +189,7 @@ class Genome:
 
         self.chromosomes = genome
 
-    def apply_edits(self, session):
+    def apply_edits(self):
         """
         Apply the edits to the genome and store the modified tree in self.modified_tree
         """
@@ -182,7 +201,8 @@ class Genome:
                     # check if in dirty list or previous edits on parents have already replaced the element
                     if (chromosome.position not in dirty_list) and (not bool(set(chromosome.parents) & set(dirty_list))):
                         # get the original and donor element
-                        donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.candidate_hash).first()
+                        with Session() as session:
+                            donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.candidate_hash).first()
                         donor_tree = ET.ElementTree(ET.fromstring(donor_candidate.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
                         # replace the element
@@ -270,7 +290,6 @@ class Genome:
             language (str): the language of the code to return (default: 'c')
             srcML_path (str): the path to the srcML executable
             evaluation_server (str): the url of the evaluation server
-            session (sqlalchemy.orm.session.Session): the database session
         """
         if evaluation_server is None:
             raise ValueError("evaluation_server must be provided to submit to evaluation")

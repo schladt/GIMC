@@ -58,6 +58,10 @@ class Candidate(Base):
     tags = relationship('Tag', secondary=candidate_tag, backref='candidates')
     samples = relationship('Sample', secondary=candidate_sample, backref='candidates')
 
+    def __str__(self):
+        return f"Candidate ID: {self.hash}, Classification: {self.classification}, Status: {self.status}, F1: {self.F1}, F2: {self.F2}, F3: {self.F3}, Analysis ID: {self.analysis_id}, Error: {self.error_message}"
+
+
 ###################################
 # Sandbox Models (from sandbox/models.py)
 ###################################
