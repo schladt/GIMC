@@ -2,12 +2,55 @@
 Unified SQLAlchemy models for GIMC project
 Combines models from gi and sandbox modules to enable cross-module relationships
 """
+from __future__ import annotations
+from typing import Tuple, Optional
 from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, UniqueConstraint, DateTime, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
 Base = declarative_base()
+
+###################################
+# Fitness Function for Candidate evaluation
+###################################
+
+def soft_hierarchical_fitness(
+    F1: float, F2: float, F3: float,
+    *,
+    w1: float = 0.15,   # compile quality (warnings/errors)
+    w2: float = 0.25,   # unit test pass rate
+    w3: float = 0.60,   # behavior/class probability
+    w23: float = 0.25,  # bonus when behavior + tests align
+    w13: float = 0.10,  # bonus when behavior + compile align
+    w12: float = 0.05,  # bonus when compile + tests align
+    normalize: bool = True
+) -> float:
+    """
+    Single scalar fitness for F1/F2/F3 in [0,1], maximize.
+
+    - F3 always contributes (no hard thresholds).
+    - Interaction terms softly prefer candidates that are also compiling/testing well.
+    - Useful when objectives are mostly hierarchical but not strictly dependent.
+    """
+    # clamp defensively
+    F1 = 0.0 if F1 < 0 else 1.0 if F1 > 1 else F1
+    F2 = 0.0 if F2 < 0 else 1.0 if F2 > 1 else F2
+    F3 = 0.0 if F3 < 0 else 1.0 if F3 > 1 else F3
+
+    base = (w1 * F1) + (w2 * F2) + (w3 * F3)
+
+    # Soft preference for "later-stage" success without hiding early F3
+    synergy = (w23 * (F2 * F3)) + (w13 * (F1 * F3)) + (w12 * (F1 * F2))
+
+    score = base + synergy
+
+    if not normalize:
+        return score
+
+    # Upper bound occurs at F1=F2=F3=1
+    max_score = (w1 + w2 + w3) + (w23 + w13 + w12)
+    return score / max_score if max_score > 0 else 0.0
 
 ###################################
 # Many-to-Many Association Tables
@@ -58,9 +101,29 @@ class Candidate(Base):
     tags = relationship('Tag', secondary=candidate_tag, backref='candidates')
     samples = relationship('Sample', secondary=candidate_sample, backref='candidates')
 
-    def __str__(self):
-        return f"Candidate ID: {self.hash}, Classification: {self.classification}, Status: {self.status}, F1: {self.F1}, F2: {self.F2}, F3: {self.F3}, Analysis ID: {self.analysis_id}, Error: {self.error_message}"
+    def get_fitness(self, **kwargs) -> Optional[float]:
+        """
+        Calculate fitness score using soft hierarchical fitness algorithm.
+        Returns None if any of F1, F2, or F3 are None.
+        
+        Args:
+            **kwargs: Optional parameters to pass to soft_hierarchical_fitness
+                     (w1, w2, w3, w23, w13, w12, normalize)
+        
+        Returns:
+            float: Fitness score in [0,1], or None if any fitness value is None
+        """
+        if self.F1 is None or self.F2 is None or self.F3 is None:
+            return None
+        return soft_hierarchical_fitness(self.F1, self.F2, self.F3, **kwargs)
 
+    def __str__(self):
+        fitness = self.get_fitness()
+        fit_str = f"{fitness:.3e}" if fitness is not None else "N/A"
+        F1_str = f"{self.F1:.3e}" if self.F1 is not None else "N/A"
+        F2_str = f"{self.F2:.3e}" if self.F2 is not None else "N/A"
+        F3_str = f"{self.F3:.3e}" if self.F3 is not None else "N/A"
+        return f"Candidate ID: {self.hash}, Classification: {self.classification}, Status: {self.status}, Fitness: {fit_str}, F1: {F1_str}, F2: {F2_str}, F3: {F3_str}, Analysis ID: {self.analysis_id}, Error: {self.error_message}"
 
 ###################################
 # Sandbox Models (from sandbox/models.py)
