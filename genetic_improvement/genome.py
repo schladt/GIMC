@@ -125,7 +125,6 @@ class Genome:
         self.orig_elems = None
         self.modified_tree = None
         self.fitness = 0
-        self.code = None
         if build_genome:
             self.build_genome()
 
@@ -281,31 +280,6 @@ class Genome:
         else:
             read_archive.close()
             raise ValueError("Failed to parse XML and extract source code")    
-    
-    def submit_to_evaluation(self, evaluation_server=None, sandbox=False):
-        """
-        Submit the genome to evaluation
-        
-        Args:
-            language (str): the language of the code to return (default: 'c')
-            srcML_path (str): the path to the srcML executable
-            evaluation_server (str): the url of the evaluation server
-        """
-        if evaluation_server is None:
-            raise ValueError("evaluation_server must be provided to submit to evaluation")
-        
-        if self.code is None:
-            raise ValueError("Genome must have code (hint: call get_code first) to submit to evaluation")
-        
-        url = f"{evaluation_server}/submit"
-        code_file = io.StringIO(self.code)
-        files={'file': ('proto.c', code_file)}
-        data={'sandbox': sandbox}
-        r = requests.post(url, files=files, data={"json_data": json.dumps(data)})
-        if r.status_code != 200:
-            raise ValueError(f"Error submitting to evaluation server: {r.text}")
-        
-        return r.json()
 
     def calculate_fitness(self, server_response):
         """
