@@ -30,16 +30,16 @@ This framework supports cybersecurity research by enabling:
 ## 🏗️ System Architecture
 
 ```mermaid
-graph TB
-    A[🤖 LLM Prototype Generation] --> B[🧪 Unit Test Validation]
-    B --> C[📦 Sandbox Execution]
-    C --> D[🎯 Behavioral Classification]
-    D --> E[🧬 Genetic Improvement]
-    E --> F[🔄 Fitness Evaluation]
+flowchart TB
+    A["LLM Prototype Generation"] --> B["Unit Test Validation"]
+    B --> C["Sandbox Execution"]
+    C --> D["Behavioral Classification"]
+    D --> E["Genetic Improvement"]
+    E --> F["Fitness Evaluation"]
     F --> C
-    
-    G[🗄️ Database] --> D
-    H[⚙️ Evaluation Server] --> F
+
+    G["Database"] --> D
+    H["Evaluation Server"] --> F
 ```
 
 ## 📁 Project Components
