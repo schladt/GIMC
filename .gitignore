@@ -48,3 +48,6 @@ tmp_*
 
 # log files
 *.log
+
+# notes
+notes/*
