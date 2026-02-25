@@ -114,7 +114,7 @@ class Candidate(Base):
             float: Fitness score in [0,1], or None if any fitness value is None
         """
         if self.F1 is None or self.F2 is None or self.F3 is None:
-            return None
+            return 0.0  # or return None to indicate fitness cannot be calculated
         return soft_hierarchical_fitness(self.F1, self.F2, self.F3, **kwargs)
 
     def __str__(self):
@@ -123,7 +123,7 @@ class Candidate(Base):
         F1_str = f"{self.F1:.3e}" if self.F1 is not None else "N/A"
         F2_str = f"{self.F2:.3e}" if self.F2 is not None else "N/A"
         F3_str = f"{self.F3:.3e}" if self.F3 is not None else "N/A"
-        return f"Candidate ID: {self.hash}, Classification: {self.classification}, Status: {self.status}, Fitness: {fit_str}, F1: {F1_str}, F2: {F2_str}, F3: {F3_str}, Analysis ID: {self.analysis_id}, Error: {self.error_message}"
+        return f"Candidate ID: {self.hash}, Classification: {self.classification}, Status: {self.status}, Fitness: {fit_str}, F1: {F1_str}, F2: {F2_str}, F3: {F3_str}, Analysis ID: {self.analysis_id}, Error: {self.error_message[:100]}"
 
 ###################################
 # Sandbox Models (from sandbox/models.py)
