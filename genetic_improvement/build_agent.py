@@ -340,7 +340,7 @@ def compile_code(makefile_path):
             return True, F1, output_file, None
         else:
             logging.warning(f"Compilation failed - no binary produced")
-            error_message = f"Compilation failed: {errors} errors, {warnings} warnings"
+            error_message = f"Compilation failed: {errors} errors, {warnings} warnings, full output: {output}"
             return False, F1, None, error_message
     
     except subprocess.TimeoutExpired:
