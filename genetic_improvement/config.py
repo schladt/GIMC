@@ -61,6 +61,7 @@ class Config(object):
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 CHAT_ENDPOINT = f"{OLLAMA_HOST}/api/chat"
+MODEL = "qwen3-coder:latest"
 NUM_VARIANTS = 4
 UNIT_TEST_CODE = None
 BSI_CLASSIFICATION = "com"
@@ -71,7 +72,7 @@ You always respond with ONLY code - no explanations, no markdown formatting, no 
 When asked for a Makefile, respond with only Makefile syntax that is compatible with GCC/MinGW.
 When asked for C/C++ code, respond with only source code starting with #include statements."""
 
-USER_PROMPT = """Generate {num_variants} different C/C++ implementations that statisfy the following objectives:
+USER_PROMPT = """Generate {num_variants} different C/C++ implementations that satisfy the following objectives:
 {bsi_objectives}
 
 The following unit test must be satisfied to validate each implementation (pay attention to filenames and other details it looks for):
@@ -118,3 +119,47 @@ with open(makefile_path, "r") as f:
     makefile_example = f.read()
 
 USER_PROMPT = USER_PROMPT.format(num_variants=NUM_VARIANTS, unit_test_code=UNIT_TEST_CODE, n="{n}", bsi_objectives=bsi_objectives, code_example=code_example, makefile_example=makefile_example)
+
+#############################
+# Repair Prompt Configuration
+#############################
+
+REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix the compilation errors while maintaining the original functionality and objectives.
+
+The following unit test must be satisfied (pay attention to filenames and other details it looks for):
+```python
+{unit_test_code}
+```
+
+ORIGINAL SOURCE CODE:
+```cpp
+{source_code}
+```
+
+ORIGINAL MAKEFILE:
+```makefile
+{makefile_code}
+```
+
+BUILD ERROR OUTPUT:
+```
+{error_output}
+```
+
+Requirements:
+- Fix all compilation errors shown in the build output
+- Maintain compatibility with MinGW toolchain (g++, gcc)
+- Keep the same functional behavior and Windows API approach
+- Ensure the code still satisfies the unit test requirements
+- Use proper Windows API headers and libraries
+
+Provide the repaired code in the following format. FOLLOW THIS EXACTLY. DO NOT DEVIATE FROM THIS FORMAT OR ADD ANY EXTRA TEXT:
+=== REPAIRED ===
+=== SOURCE ===
+```cpp
+[complete fixed C/C++ code]
+```
+=== MAKEFILE ===
+```makefile
+[complete fixed Makefile with appropriate flags and libraries]
+```"""

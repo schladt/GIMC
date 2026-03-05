@@ -127,12 +127,62 @@ class OllamaChat:
         
         return variants
     
+    def parse_repair(content):
+        """
+        Parse repaired code from LLM response.
+        
+        Args:
+            content: String containing LLM-generated repair response
+        
+        Returns:
+            Dict: {'code': '...', 'makefile': '...'} or None if parsing fails
+        """
+        # Look for === REPAIRED === section
+        if '=== REPAIRED ===' not in content:
+            print("DEBUG: '=== REPAIRED ===' marker not found in LLM response")
+            print(f"DEBUG: Response preview (first 500 chars): {content[:500]}")
+            return None
+        
+        # Extract source code
+        source_match = re.search(
+            r'===\s*SOURCE\s*===\s*```(?:c\+\+|cpp|c)?\s*\n(.*?)\n```',
+            content,
+            re.DOTALL
+        )
+        
+        # Extract makefile
+        makefile_match = re.search(
+            r'===\s*MAKEFILE\s*===\s*```(?:makefile|make)?\s*\n(.*?)\n```',
+            content,
+            re.DOTALL
+        )
+        
+        if source_match and makefile_match:
+            print(f"DEBUG: Successfully parsed source ({len(source_match.group(1))} chars) and makefile ({len(makefile_match.group(1))} chars)")
+            return {
+                'code': source_match.group(1),
+                'makefile': makefile_match.group(1)
+            }
+        
+        # Debug which part failed
+        if not source_match:
+            print("DEBUG: Failed to match SOURCE block")
+        if not makefile_match:
+            print("DEBUG: Failed to match MAKEFILE block")
+        print(f"DEBUG: Response section around REPAIRED marker: {content[content.find('=== REPAIRED ==='):content.find('=== REPAIRED ===')+500]}")
+        
+        return None
+    
     def submit_variants(variants, classification):
         """
         Submit variants to the evaluation server.
         """
 
         from config import UNIT_TEST_CODE
+
+        if UNIT_TEST_CODE is None:
+            print("ERROR: UNIT_TEST_CODE is None - cannot submit variants")
+            return [None] * len(variants)
 
         candidates = []
         for variant in variants:
@@ -166,10 +216,15 @@ class OllamaChat:
                 response_data = response.json()
                 candidate_hash = response_data.get('candidate_hash')
                 candidates.append(candidate_hash)
-                print("Code submitted successfully: ", candidate_hash)
                         
             except requests.exceptions.RequestException as e:
-                print("Failed to submit variant code to evaluation server. Check logs for details.")
+                print(f"ERROR: Failed to submit variant code to evaluation server: {e}")
+                if hasattr(e, 'response') and e.response is not None:
+                    print(f"Response status: {e.response.status_code}")
+                    print(f"Response body: {e.response.text[:500]}")
+                candidates.append(None)
+            except Exception as e:
+                print(f"ERROR: Unexpected error submitting variant: {type(e).__name__}: {e}")
                 candidates.append(None)
         
         return candidates

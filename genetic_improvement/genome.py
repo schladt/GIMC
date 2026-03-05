@@ -145,6 +145,90 @@ class Genome:
         
         return candidate
 
+    def repair_code(self):
+        """
+        Repair a candidate that failed to compile using LLM assistance.
+        
+        This method:
+        1. Loads the candidate and decodes its source/makefile
+        2. Extracts build error output
+        3. Calls LLM to generate a fixed version
+        4. Submits the repaired code as a new child candidate
+        5. Returns the new candidate hash
+        
+        - Returns:
+            str: Hash of the newly created repaired candidate, or None if repair failed
+        """
+        import base64
+        from genetic_improvement.ollamachat import OllamaChat
+        from genetic_improvement.config import SYSTEM_PROMPT, REPAIR_CODE_PROMPT, UNIT_TEST_CODE, MODEL
+        
+        # Load candidate
+        candidate = self.get_candidate()
+        if not candidate:
+            print(f"Error: Candidate {self.candidate_hash} not found")
+            return None
+        
+        # Check if candidate has build errors
+        if not candidate.error_message:
+            print(f"Warning: Candidate {self.candidate_hash} has no error_message, nothing to repair")
+            return None
+        
+        # Decode base64 artifacts (only source and makefile, unit_test comes from config)
+        try:
+            source_code = base64.b64decode(candidate.code).decode('utf-8')
+            makefile_code = base64.b64decode(candidate.makefile).decode('utf-8')
+        except Exception as e:
+            print(f"Error decoding candidate artifacts: {e}")
+            return None
+        
+        # Format repair prompt using UNIT_TEST_CODE from config
+        repair_prompt = REPAIR_CODE_PROMPT.format(
+            unit_test_code=UNIT_TEST_CODE,
+            source_code=source_code,
+            makefile_code=makefile_code,
+            error_output=candidate.error_message
+        )
+        
+        # Call LLM to repair code
+        print(f"Requesting LLM repair for candidate {self.candidate_hash[:8]}...")
+        chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=0.7, timeout_s=180)
+        
+        try:
+            repair_response = chat.chat(repair_prompt, stream=False)
+        except requests.exceptions.ReadTimeout:
+            print(f"ERROR: LLM request timed out after 180 seconds for candidate {self.candidate_hash[:8]}")
+            return None
+        except requests.exceptions.ConnectionError as e:
+            print(f"ERROR: Failed to connect to LLM server: {e}")
+            print(f"Please ensure Ollama is running and accessible at the configured endpoint.")
+            return None
+        except Exception as e:
+            print(f"ERROR: Unexpected error during LLM request: {type(e).__name__}: {e}")
+            return None
+        
+        # Parse repaired code
+        repaired = OllamaChat.parse_repair(repair_response)
+        if not repaired:
+            print(f"ERROR: Failed to parse LLM repair response")
+            print(f"Full LLM response:\n{repair_response}")
+            return None
+        
+        # Resubmit as new candidate using existing submit_variants infrastructure
+        repaired_variant = [{
+            'code': repaired['code'],
+            'makefile': repaired['makefile']
+        }]
+        candidate_hashes = OllamaChat.submit_variants(repaired_variant, candidate.classification)
+        new_candidate_hash = candidate_hashes[0] if candidate_hashes else None
+        
+        if new_candidate_hash:
+            print(f"Repair successful: {new_candidate_hash[:8]} (parent: {self.candidate_hash[:8]})")
+        else:
+            print(f"ERROR: Failed to submit repaired candidate")
+        
+        return new_candidate_hash
+
     def build_genome(self):
         """
         Build a genome from self.candidate_hash
