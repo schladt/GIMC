@@ -2,13 +2,8 @@
 Contains the chromosome class and functions for constructing a genome from an xml file
 """
 
-import os
-import subprocess
-import shutil
+import base64
 import requests
-import io
-import json
-import math
 import xml.etree.ElementTree as ET
 from pylibsrcml import srcMLArchive, srcMLArchiveWriteString, srcMLArchiveRead, srcMLUnit
 
@@ -242,6 +237,10 @@ class Genome:
             candidate = session.query(Candidate).filter(Candidate.hash == self.candidate_hash).first()
 
         # parse the xml file
+        if candidate.xml is None:
+            code_decoded = base64.b64decode(candidate.code).decode('utf-8')
+            candidate.xml = Genome.to_xml(code_decoded, None)
+        
         tree = ET.ElementTree(ET.fromstring(candidate.xml))
         self.modified_tree = tree # modified tree starts as the base tree
         root = tree.getroot()
@@ -286,6 +285,11 @@ class Genome:
                         # get the original and donor element
                         with Session() as session:
                             donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.candidate_hash).first()
+
+                        if donor_candidate.xml is None:
+                            code_decoded = base64.b64decode(donor_candidate.code).decode('utf-8')
+                            donor_candidate.xml = Genome.to_xml(code_decoded, None)
+
                         donor_tree = ET.ElementTree(ET.fromstring(donor_candidate.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
                         # replace the element
@@ -330,6 +334,9 @@ class Genome:
         Returns:
             XML string representation of the code
         """
+        if language is None:
+            language = "C++"
+        
         archive = srcMLArchiveWriteString()
         archive.set_language(language)
         archive.enable_solitary_unit()
