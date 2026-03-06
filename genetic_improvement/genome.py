@@ -82,11 +82,8 @@ class Edit:
             raise ValueError(f"Edit type must be one of {self._edit_types}")
 
     def __str__(self):
-        if self.edit_type in ('replace', 'insert'):
-            return f"Edit: {self.edit_type} with position {self.candidate_position} in candidate {self.candidate_hash}"
-        elif self.edit_type == 'delete':
-            return f"Edit: {self.edit_type}"
-        
+        return f'Edit Type: {self._edit_type}, Candidate: {self.candidate_hash}, Position: {self.candidate_position}'
+    
 class Chromosome:
     """
     A class representing a chromosome
