@@ -142,7 +142,7 @@ class Analysis(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     sample = Column(String(64), ForeignKey('sample.sha256'))
     report = Column(String)
-    status = Column(Integer, default=0)
+    status = Column(Integer, default=0)  # 0=pending, 1=running, 2=complete, 3=error
     date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     date_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     analysis_vm = Column(String, default=None)

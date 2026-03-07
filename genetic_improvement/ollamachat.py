@@ -189,6 +189,17 @@ class OllamaChat:
             code_content = variant['code']
             makefile_content = variant['makefile']
 
+            # try to base64 decode the code and make content in case it was already encoded
+            try:
+                code_content = base64.b64decode(code_content).decode('utf-8')
+            except:
+                pass
+
+            try:
+                makefile_content = base64.b64decode(makefile_content).decode('utf-8')
+            except:
+                pass
+
             # Base64 encode the code and makefile content
             encoded_code = base64.b64encode(code_content.encode('utf-8')).decode('utf-8')
             encoded_makefile = base64.b64encode(makefile_content.encode('utf-8')).decode('utf-8')

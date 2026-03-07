@@ -6,7 +6,9 @@ import base64
 import requests
 import xml.etree.ElementTree as ET
 from pylibsrcml import srcMLArchive, srcMLArchiveWriteString, srcMLArchiveRead, srcMLUnit
+from copy import deepcopy
 
+from genetic_improvement.ollamachat import OllamaChat
 from models import Candidate
 from genetic_improvement.config import Config
 
@@ -44,6 +46,10 @@ def replace_element(org_tree, org_elem, donor_elem):
 
     for elem in org_root.iter():
         if elem == org_elem:
+            if elem not in parent_map:
+                org_tree._setroot(donor_elem)
+                return org_tree
+
             parent = parent_map[elem]
             # find the position of the element in the parent
             i = 0
@@ -115,6 +121,7 @@ class Genome:
         self.candidate_hash = candidate_hash
         self.chromosomes = []
         self.orig_elems = None
+        self.tree = None
         self.modified_tree = None
         self.fitness = 0
         if build_genome:
@@ -238,9 +245,8 @@ class Genome:
             code_decoded = base64.b64decode(candidate.code).decode('utf-8')
             candidate.xml = Genome.to_xml(code_decoded, None)
         
-        tree = ET.ElementTree(ET.fromstring(candidate.xml))
-        self.modified_tree = tree # modified tree starts as the base tree
-        root = tree.getroot()
+        self.tree = ET.ElementTree(ET.fromstring(candidate.xml))
+        root = self.tree.getroot()
         self.orig_elems = [e for e in root.iter()]
 
         # index map keeps track of the index of each element in the xml
@@ -272,16 +278,23 @@ class Genome:
         """
         Apply the edits to the genome and store the modified tree in self.modified_tree
         """
+        
+        # modified_tree starts as exact copy of the original tree
+        self.modified_tree = deepcopy(self.tree)
 
         dirty_list = []
         for chromosome in self.chromosomes:
             for edit in chromosome.edits:
                 if edit.edit_type == 'replace':
                     # check if in dirty list or previous edits on parents have already replaced the element
-                    if (chromosome.position not in dirty_list) and (not bool(set(chromosome.parents) & set(dirty_list))):
+                    in_dirty = chromosome.position in dirty_list
+                    parent_conflict = bool(set(chromosome.parents) & set(dirty_list))
+                    if (not in_dirty) and (not parent_conflict):
                         # get the original and donor element
                         with Session() as session:
                             donor_candidate = session.query(Candidate).filter(Candidate.hash == edit.candidate_hash).first()
+                        if donor_candidate is None:
+                            continue
 
                         if donor_candidate.xml is None:
                             code_decoded = base64.b64decode(donor_candidate.code).decode('utf-8')
@@ -289,6 +302,13 @@ class Genome:
 
                         donor_tree = ET.ElementTree(ET.fromstring(donor_candidate.xml))
                         donor_elems = [e for e in donor_tree.getroot().iter()]
+                        if edit.candidate_position < 0 or edit.candidate_position >= len(donor_elems):
+                            continue
+                        if self.orig_elems is None or chromosome.position < 0 or chromosome.position >= len(self.orig_elems):
+                            continue
+                        if self.modified_tree is None:
+                            continue
+
                         # replace the element
                         donor_elem = donor_elems[edit.candidate_position]
                         self.modified_tree = replace_element(self.modified_tree, self.orig_elems[chromosome.position], donor_elem)
@@ -319,6 +339,18 @@ class Genome:
                             for elem in self.modified_tree.getroot().iter():
                                 if elem.tag.split("}")[1] == 'name' and elem.text == old_name:
                                     elem.text = new_name
+
+        # submit the modified code to the evaluation server to get candidate hashes
+        m_xml = ET.tostring(self.modified_tree.getroot(), encoding='unicode')
+        m_code = Genome.to_code(m_xml)
+        mutated_variant = [{
+            'code': m_code,
+            'makefile': self.get_candidate().makefile
+        }]
+        m_candidate_hashes = OllamaChat.submit_variants(mutated_variant, classification=self.get_candidate().classification)
+        if m_candidate_hashes is None or len(m_candidate_hashes) == 0:
+            return None
+        return m_candidate_hashes[0]
     
     def to_xml(code: str, language: str) -> str:
         """
