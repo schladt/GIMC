@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
 
 def get_checkpoint_path(checkpoint_prefix: str = "") -> str:
     """Return checkpoint path based on DATA_PATH and BSI classification."""
-    filename = f"{checkpoint_prefix}{BSI_CLASSIFICATION}_checkpoint.pkl"
+    filename = f"{checkpoint_prefix}_{BSI_CLASSIFICATION}_checkpoint.pkl"
     return os.path.join(DATA_PATH, "GI", filename)
 
 
