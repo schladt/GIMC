@@ -80,6 +80,12 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Optional prefix prepended to checkpoint filename.",
     )
+    parser.add_argument(
+        "--num-variants",
+        type=int,
+        default=NUM_VARIANTS,
+        help=f"LLM variants requested per generation batch (default from config: {NUM_VARIANTS}).",
+    )
     return parser.parse_args()
 
 
@@ -191,12 +197,12 @@ def summarize_stage(stage: str, genomes: List[Genome]) -> None:
     )
 
 
-def generate_new_variants(target_count: int) -> List[Genome]:
+def generate_new_variants(target_count: int, num_variants: int) -> List[Genome]:
     """Generate and submit new variants until target count is reached or attempts are exhausted."""
     if target_count <= 0:
         return []
 
-    batch_size = max(1, NUM_VARIANTS)
+    batch_size = max(1, num_variants)
     genomes: List[Genome] = []
     attempts = 0
     max_attempts = max(3, math.ceil(target_count / batch_size) * 3)
@@ -216,9 +222,9 @@ def generate_new_variants(target_count: int) -> List[Genome]:
         )
 
         chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=0.7)
-        variants = chat.generate_variants(num_variants=NUM_VARIANTS, initial_prompt=USER_PROMPT)
+        variants = chat.generate_variants(num_variants=num_variants, initial_prompt=USER_PROMPT)
         parsed_count = len(variants)
-        print(f"[generation] Generation batch {attempts}: parsed {parsed_count} variant(s) from {NUM_VARIANTS} requests.")
+        print(f"[generation] Generation batch {attempts}: parsed {parsed_count} variant(s) from {num_variants} requests.")
 
         if not variants:
             print("[generation] Warning: parsed 0 variants from this generation batch.")
@@ -374,6 +380,8 @@ def main() -> None:
         raise ValueError("--generations must be > 0")
     if not (0.0 <= args.mutation_rate <= 1.0):
         raise ValueError("--mutation-rate must be in [0.0, 1.0]")
+    if args.num_variants <= 0:
+        raise ValueError("--num-variants must be > 0")
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -385,7 +393,8 @@ def main() -> None:
     print(f"Classification: {BSI_CLASSIFICATION}")
     print(
         f"Run config: N={args.population_size}, generations={args.generations}, "
-        f"mutation_rate={args.mutation_rate}, poll_interval={args.poll_interval}s"
+        f"mutation_rate={args.mutation_rate}, poll_interval={args.poll_interval}s, "
+        f"num_variants={args.num_variants}"
     )
 
     generational_data = load_checkpoint(checkpoint_path)
@@ -422,14 +431,14 @@ def main() -> None:
                 f"[stage: population] Initial generation: creating {args.population_size} "
                 "new candidate(s)."
             )
-            population = generate_new_variants(args.population_size)
+            population = generate_new_variants(args.population_size, args.num_variants)
         else:
             print(
                 f"[stage: population] Carrying over {len(selected_for_next)} selected candidate(s) "
                 f"and creating {args.population_size} fresh candidate(s) "
                 f"(target combined population: {len(selected_for_next) + args.population_size})."
             )
-            fresh_population = generate_new_variants(args.population_size)
+            fresh_population = generate_new_variants(args.population_size, args.num_variants)
             population = selected_for_next + fresh_population
 
         generation_record: Dict[str, List[Genome]] = {"population": population}

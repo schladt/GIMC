@@ -48,6 +48,7 @@ tmp_*
 
 # log files
 *.log
+grid_search_logs/
 
 # notes
 notes/*
