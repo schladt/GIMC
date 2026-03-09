@@ -160,7 +160,7 @@ class Genome:
         """
         import base64
         from genetic_improvement.ollamachat import OllamaChat
-        from genetic_improvement.config import SYSTEM_PROMPT, REPAIR_CODE_PROMPT, UNIT_TEST_CODE, MODEL
+        from genetic_improvement.config import REPAIR_SYSTEM_PROMPT, REPAIR_CODE_PROMPT, UNIT_TEST_CODE, MODEL
         
         # Load candidate
         candidate = self.get_candidate()
@@ -181,17 +181,26 @@ class Genome:
             print(f"Error decoding candidate artifacts: {e}")
             return None
         
-        # Format repair prompt using UNIT_TEST_CODE from config
+        # Truncate error message if too long to avoid overwhelming the LLM
+        error_output = candidate.error_message
+        if len(error_output) > 4000:
+            error_output = error_output[:2000] + "\n... [truncated] ...\n" + error_output[-2000:]
+        
+        # Format repair prompt using UNIT_TEST_CODE and bsi_objectives from config
+        from genetic_improvement.config import UNIT_TEST_CODE as unit_test_code_import
+        from genetic_improvement.config import bsi_objectives as bsi_objectives_import
+        
         repair_prompt = REPAIR_CODE_PROMPT.format(
-            unit_test_code=UNIT_TEST_CODE,
+            unit_test_code=unit_test_code_import,
             source_code=source_code,
             makefile_code=makefile_code,
-            error_output=candidate.error_message
+            error_output=error_output,
+            bsi_objectives=bsi_objectives_import
         )
         
-        # Call LLM to repair code
+        # Call LLM to repair code with lower temperature for conservative fixes
         print(f"Requesting LLM repair for candidate {self.candidate_hash[:8]}...")
-        chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=0.7, timeout_s=180)
+        chat = OllamaChat(model=MODEL, system_prompt=REPAIR_SYSTEM_PROMPT, temperature=0.2, timeout_s=180)
         
         try:
             repair_response = chat.chat(repair_prompt, stream=False)
@@ -210,7 +219,9 @@ class Genome:
         repaired = OllamaChat.parse_variant(repair_response)
         if not repaired:
             print(f"ERROR: Failed to parse LLM repair response")
-            print(f"Full LLM response:\n{repair_response}")
+            print(f"Response length: {len(repair_response)} chars")
+            print(f"Response preview (first 800 chars):\n{repair_response[:800]}")
+            print(f"Response preview (last 800 chars):\n{repair_response[-800:]}")
             return None
         
         # Resubmit as new candidate using existing submit_variants infrastructure

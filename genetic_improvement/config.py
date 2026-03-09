@@ -105,15 +105,15 @@ with open(unit_test_code_path, "r") as f:
 
 
 bsi_objectives = """Create a benign Windows lab program that demonstrates recurring execution in a controlled manner. Your program should exit successfully after setting up its persistence mechanism. After exiting, the persistence mechanism should immediately trigger, first by creating the specified test file (path is C:\\Users\\Public\\gimc_test.log ), and then updating that file at least three times within the test monitoring window of 10 seconds. Do not include additional functionality beyond what is strictly necessary for the isolated unit test. Examples of acceptable approaches include directly calling schtasks.exe with various parameters, leveraging the COM API (ITaskService), and using PowerShell or WMI to schedule tasks (secondary scripts or payloads that write the specified file)"""
-bsi_code_path = "/home/mike/projects/samples/task_com_bsi.cpp"
+bsi_code_path = "/home/mike/projects/samples/example_cmd.cpp"
 with open(bsi_code_path, "r") as f:
     code_example = f.read()
 
-makefile_path = "/home/mike/projects/GIMC/behavioral_subsets/scheduled_execution/com/Makefile"
+makefile_path = "/home/mike/projects/GIMC/behavioral_subsets/scheduled_execution/cmd/Makefile"
 with open(makefile_path, "r") as f:
     makefile_example = f.read()
 
-USER_PROMPT = USER_PROMPT.format(num_variants=NUM_VARIANTS, unit_test_code=UNIT_TEST_CODE, n="{n}", bsi_objectives=bsi_objectives, code_example=code_example, makefile_example=makefile_example)
+USER_PROMPT = USER_PROMPT.format(num_variants=NUM_VARIANTS, unit_test_code=UNIT_TEST_CODE, bsi_objectives=bsi_objectives, code_example=code_example, makefile_example=makefile_example)
 
 #############################
 # Follow-up Prompt Configuration
@@ -125,11 +125,25 @@ FOLLOW_UP_PROMPT = """That response was great. Now generate another response usi
 # Repair Prompt Configuration
 #############################
 
-REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix the compilation errors while maintaining the original functionality and objectives.
+REPAIR_SYSTEM_PROMPT = """You are a C/C++ debugging expert specializing in MinGW/GCC compilation fixes.
+You make MINIMAL changes to fix compilation errors while preserving the original code's approach and structure.
+You NEVER rewrite working code or change the implementation method.
+You always respond with ONLY code using the REQUIRED RESPONSE FORMAT - no explanations, no markdown formatting, no comments outside the code itself.
+When fixing code, you focus on:
+- Adding missing #include directives
+- Correcting Win32 API types and declarations
+- Adding missing linker flags for Windows APIs
+- Fixing syntax errors without changing logic
+"""
 
-The following unit test must be satisfied (pay attention to filenames and other details it looks for):
-```python
-{unit_test_code}
+REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ONLY the compilation errors with minimal changes while preserving the original implementation approach.
+
+BEHAVIORAL OBJECTIVES (what the code should accomplish):
+{bsi_objectives}
+
+BUILD ERROR OUTPUT (focus on fixing these specific errors):
+```
+{error_output}
 ```
 
 ORIGINAL SOURCE CODE:
@@ -142,17 +156,25 @@ ORIGINAL MAKEFILE:
 {makefile_code}
 ```
 
-BUILD ERROR OUTPUT:
-```
-{error_output}
+The following unit test must pass after repair:
+```python
+{unit_test_code}
 ```
 
-Requirements:
-- Fix all compilation errors shown in the build output
+CRITICAL REQUIREMENTS:
+- Make MINIMAL changes - fix only what's broken in the error output above
+- DO NOT rewrite or refactor working code
+- Keep the EXACT SAME implementation approach (same Windows APIs, same method)
+- Fix syntax errors, missing headers, wrong types, etc. shown in the build output
 - Maintain compatibility with MinGW toolchain (g++, gcc)
-- Keep the same functional behavior and Windows API approach
-- Ensure the code still satisfies the unit test requirements
-- Use proper Windows API headers and libraries
+- Ensure code still achieves the behavioral objectives and passes unit test
+
+Common MinGW fixes:
+- Add missing #include directives for Windows APIs
+- Fix incorrect Win32 type declarations
+- Add missing libraries to Makefile (e.g., -lole32 -loleaut32 -luuid for COM)
+- Fix string literal issues (use L"" for wide strings)
+- Add proper error handling for API calls
 
 REQUIRED RESPONSE FORMAT: Provide the repaired code in the following format. FOLLOW THIS EXACTLY. DO NOT DEVIATE FROM THIS FORMAT OR ADD ANY EXTRA TEXT:
 === SOURCE ===
