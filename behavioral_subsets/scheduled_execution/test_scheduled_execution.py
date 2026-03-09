@@ -7,7 +7,7 @@ by verifying three key behavioral criteria:
 
 1. Installation Success: The BSI executable runs and terminates cleanly, indicating
    that it successfully installed its persistence mechanism (e.g., WMI Event Subscription,
-   Scheduled Task, Registry Run key, etc.)
+   Scheduled Task, COM API usage, Registry Run key, etc.)
 
 2. Payload Execution: The test file is created, proving that the scheduled payload
    actually executed at least once after installation.
@@ -20,7 +20,7 @@ Usage:
     python test_scheduled_execution.py <bsi_executable> <test_log_file>
     
 Example:
-    python test_scheduled_execution.py wmi_persistence_bsi.exe C:\\Users\\Public\\gimc_wmi_test.log
+    python test_scheduled_execution.py wmi_persistence_bsi.exe C:\\Users\\Public\\gimc_test.log
 
 Test Criteria:
     - PASS Metric 1: BSI executable exits with code 0 (success)
@@ -313,8 +313,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python test_scheduled_execution.py wmi_persistence_bsi.exe C:\\Users\\Public\\gimc_wmi_test.log
-  python test_scheduled_execution.py scheduled_task_bsi.exe C:\\Temp\\task_test.log
+  python test_scheduled_execution.py persistence_bsi.exe C:\\Users\\Public\\gimc_test.log
 
 This test validates three key behaviors:
   1. BSI installs persistence mechanism without errors

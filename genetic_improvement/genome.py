@@ -207,7 +207,7 @@ class Genome:
             return None
         
         # Parse repaired code
-        repaired = OllamaChat.parse_repair(repair_response)
+        repaired = OllamaChat.parse_variant(repair_response)
         if not repaired:
             print(f"ERROR: Failed to parse LLM repair response")
             print(f"Full LLM response:\n{repair_response}")

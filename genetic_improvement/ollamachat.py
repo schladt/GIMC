@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 
 # add current directory to sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from genetic_improvement.config import CHAT_ENDPOINT, SANDBOX_TOKEN, EVALUATION_SERVER
+from genetic_improvement.config import CHAT_ENDPOINT, SANDBOX_TOKEN, EVALUATION_SERVER, FOLLOW_UP_PROMPT
 
 
 Message = Dict[str, str]  # {"role": "system"|"user"|"assistant", "content": "..."}
@@ -78,71 +78,27 @@ class OllamaChat:
         self.messages.append({"role": "assistant", "content": reply})
         return reply
 
-    def parse_variants(content):
+    @staticmethod
+    def parse_variant(content: str) -> Optional[Dict[str, str]]:
         """
-        Parse variants from text content and extract source code and makefiles.
+        Parse a single variant from LLM response in the standard format.
+        
+        Expected format:
+            === SOURCE ===
+            ```cpp
+            [code]
+            ```
+            === MAKEFILE ===
+            ```makefile
+            [makefile]
+            ```
         
         Args:
-            content: String containing LLM-generated variants
-        
-        Returns:
-            List of dicts: [{'code': '...', 'makefile': '...', 'source_file': '...', 'makefile_file': '...'}, ...]
-        """
-        # Split into variants
-        variant_blocks = re.split(r'===\s*VARIANT\s+\d+\s*===', content)
-        
-        variants = []
-        
-        for block in variant_blocks:
-            if not block.strip():
-                continue
-            
-            # Extract source code
-            source_match = re.search(
-                r'===\s*SOURCE:\s*(\S+)\s*===\s*```(?:c\+\+|cpp|c)?\s*\n(.*?)\n```',
-                block,
-                re.DOTALL
-            )
-            
-            # Extract makefile
-            makefile_match = re.search(
-                r'===\s*MAKEFILE:\s*(\S+)\s*===\s*```(?:makefile|make)?\s*\n(.*?)\n```',
-                block,
-                re.DOTALL
-            )
-            
-            if source_match and makefile_match:
-                source_filename = source_match.group(1)
-                source_code = source_match.group(2)
-                
-                makefile_filename = makefile_match.group(1)
-                makefile_code = makefile_match.group(2)
-                
-                variants.append({
-                    'code': source_code,
-                    'makefile': makefile_code,
-                    'source_file': source_filename,
-                    'makefile_file': makefile_filename
-                })
-        
-        return variants
-    
-    def parse_repair(content):
-        """
-        Parse repaired code from LLM response.
-        
-        Args:
-            content: String containing LLM-generated repair response
+            content: String containing LLM-generated code response
         
         Returns:
             Dict: {'code': '...', 'makefile': '...'} or None if parsing fails
         """
-        # Look for === REPAIRED === section
-        if '=== REPAIRED ===' not in content:
-            print("DEBUG: '=== REPAIRED ===' marker not found in LLM response")
-            print(f"DEBUG: Response preview (first 500 chars): {content[:500]}")
-            return None
-        
         # Extract source code
         source_match = re.search(
             r'===\s*SOURCE\s*===\s*```(?:c\+\+|cpp|c)?\s*\n(.*?)\n```',
@@ -158,7 +114,6 @@ class OllamaChat:
         )
         
         if source_match and makefile_match:
-            print(f"DEBUG: Successfully parsed source ({len(source_match.group(1))} chars) and makefile ({len(makefile_match.group(1))} chars)")
             return {
                 'code': source_match.group(1),
                 'makefile': makefile_match.group(1)
@@ -166,12 +121,58 @@ class OllamaChat:
         
         # Debug which part failed
         if not source_match:
-            print("DEBUG: Failed to match SOURCE block")
+            print("DEBUG: Failed to match SOURCE block in response")
         if not makefile_match:
-            print("DEBUG: Failed to match MAKEFILE block")
-        print(f"DEBUG: Response section around REPAIRED marker: {content[content.find('=== REPAIRED ==='):content.find('=== REPAIRED ===')+500]}")
+            print("DEBUG: Failed to match MAKEFILE block in response")
+        print(f"DEBUG: Response preview (first 500 chars): {content[:500]}")
         
         return None
+    
+    def generate_variants(self, num_variants: int, initial_prompt: str) -> List[Dict[str, str]]:
+        """
+        Generate multiple code variants by making sequential chat requests.
+        
+        First request uses initial_prompt. Subsequent requests ask for different
+        implementation approaches while maintaining chat context.
+        
+        Args:
+            num_variants: Number of variants to generate
+            initial_prompt: Initial prompt for first variant
+        
+        Returns:
+            List of successfully parsed variants: [{'code': '...', 'makefile': '...'}, ...]
+        """
+        variants = []
+        
+        for i in range(num_variants):
+            try:
+                if i == 0:
+                    # First variant: use initial prompt
+                    print(f"[generate_variants] Requesting variant {i+1}/{num_variants}...")
+                    response = self.chat(user_text=initial_prompt, stream=False)
+                else:
+                    # Subsequent variants: ask for different implementation
+                    print(f"[generate_variants] Requesting variant {i+1}/{num_variants} (different approach)...")
+                    response = self.chat(user_text=FOLLOW_UP_PROMPT, stream=False)
+                
+                # Parse the response
+                variant = OllamaChat.parse_variant(response)
+                
+                if variant:
+                    variants.append(variant)
+                    print(f"[generate_variants] Successfully parsed variant {i+1}/{num_variants}")
+                else:
+                    print(f"[generate_variants] Warning: Failed to parse variant {i+1}/{num_variants}, skipping...")
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"[generate_variants] ERROR: Network error generating variant {i+1}/{num_variants}: {e}")
+                continue
+            except Exception as e:
+                print(f"[generate_variants] ERROR: Unexpected error generating variant {i+1}/{num_variants}: {type(e).__name__}: {e}")
+                continue
+        
+        print(f"[generate_variants] Successfully generated {len(variants)}/{num_variants} variants")
+        return variants
     
     def submit_variants(variants, classification):
         """

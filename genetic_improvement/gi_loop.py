@@ -74,12 +74,19 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional RNG seed for reproducible mutation selection.",
     )
+    parser.add_argument(
+        "--checkpoint-prefix",
+        type=str,
+        default="",
+        help="Optional prefix prepended to checkpoint filename.",
+    )
     return parser.parse_args()
 
 
-def get_checkpoint_path() -> str:
+def get_checkpoint_path(checkpoint_prefix: str = "") -> str:
     """Return checkpoint path based on DATA_PATH and BSI classification."""
-    return os.path.join(DATA_PATH, "GI", f"{BSI_CLASSIFICATION}_checkpoint.pkl")
+    filename = f"{checkpoint_prefix}{BSI_CLASSIFICATION}_checkpoint.pkl"
+    return os.path.join(DATA_PATH, "GI", filename)
 
 
 def ensure_checkpoint_dir(path: str) -> None:
@@ -194,27 +201,55 @@ def generate_new_variants(target_count: int) -> List[Genome]:
     attempts = 0
     max_attempts = max(3, math.ceil(target_count / batch_size) * 3)
 
-    print(f"[generation] Creating {target_count} new candidate(s) via LLM batches of {batch_size}...")
+    print(
+        f"[generation] Target new candidates: {target_count} | "
+        f"Variants per batch: {batch_size} | "
+        f"max generation batches allowed: {max_attempts} (stops early once target is reached)"
+    )
 
     while len(genomes) < target_count and attempts < max_attempts:
         attempts += 1
-        print(f"[generation] LLM batch {attempts}/{max_attempts}")
+        remaining = target_count - len(genomes)
+        print(
+            f"[generation] LLM generation batch {attempts} (up to {max_attempts}); "
+            f"remaining candidates needed: {remaining}"
+        )
 
         chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=0.7)
-        response = chat.chat(user_text=USER_PROMPT, stream=False)
-        variants = OllamaChat.parse_variants(response)
+        variants = chat.generate_variants(num_variants=NUM_VARIANTS, initial_prompt=USER_PROMPT)
+        parsed_count = len(variants)
+        print(f"[generation] Generation batch {attempts}: parsed {parsed_count} variant(s) from {NUM_VARIANTS} requests.")
 
         if not variants:
-            print("[generation] Warning: no variants parsed in this batch.")
+            print("[generation] Warning: parsed 0 variants from this generation batch.")
             continue
 
         candidate_hashes = OllamaChat.submit_variants(variants, classification=BSI_CLASSIFICATION)
+        submitted_count = len(candidate_hashes)
+        accepted_count = sum(1 for candidate_hash in candidate_hashes if candidate_hash is not None)
+        added_count = 0
         for candidate_hash in candidate_hashes:
             if candidate_hash is None:
                 continue
             genomes.append(Genome(candidate_hash=candidate_hash))
+            added_count += 1
             if len(genomes) >= target_count:
                 break
+
+        failed_submissions = submitted_count - accepted_count
+        skipped_due_to_target = max(0, accepted_count - added_count)
+        print(
+            f"[generation] Generation batch {attempts}: submitted={submitted_count}, "
+            f"accepted={accepted_count}, submission_failures={failed_submissions}, "
+            f"added={added_count}, skipped_due_to_target={skipped_due_to_target}, "
+            f"total_created={len(genomes)}/{target_count}"
+        )
+
+    if len(genomes) >= target_count:
+        print(
+            f"[generation] Target reached after {attempts} generation batch(es); "
+            f"{max_attempts - attempts} batch(es) remained unused."
+        )
 
     if len(genomes) < target_count:
         print(
@@ -343,7 +378,7 @@ def main() -> None:
     if args.seed is not None:
         random.seed(args.seed)
 
-    checkpoint_path = get_checkpoint_path()
+    checkpoint_path = get_checkpoint_path(args.checkpoint_prefix)
     ensure_checkpoint_dir(checkpoint_path)
 
     print(f"Using checkpoint: {checkpoint_path}")
@@ -381,12 +416,19 @@ def main() -> None:
         print(f"Generation {gen_num}/{args.generations}")
         print("=" * 80)
 
-        # Stage 1: build current population (N on first generation, else 2N via carry-over + new).
+        # Stage 1: build current population (N on first generation, else carry-over + N fresh).
         if gen_idx == 0:
-            print("[stage: population] Initial generation: creating N candidates.")
+            print(
+                f"[stage: population] Initial generation: creating {args.population_size} "
+                "new candidate(s)."
+            )
             population = generate_new_variants(args.population_size)
         else:
-            print("[stage: population] Creating N fresh candidates and combining with prior top-N.")
+            print(
+                f"[stage: population] Carrying over {len(selected_for_next)} selected candidate(s) "
+                f"and creating {args.population_size} fresh candidate(s) "
+                f"(target combined population: {len(selected_for_next) + args.population_size})."
+            )
             fresh_population = generate_new_variants(args.population_size)
             population = selected_for_next + fresh_population
 
