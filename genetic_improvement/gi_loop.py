@@ -483,6 +483,11 @@ def main() -> None:
 
         # Selection: keep top-N from all candidates observed in this generation.
         selected_for_next = select_top_n_from_generation(generation_record, args.population_size)
+        
+        # Print generation summary for top N selected candidates
+        print(f"\n[Generation {gen_num} Summary - Top N Selected]")
+        summarize_stage("selected_population", selected_for_next)
+        
         save_checkpoint(checkpoint_path, generational_data)
 
     print("\nGI loop complete.")
