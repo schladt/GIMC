@@ -221,7 +221,7 @@ def generate_new_variants(target_count: int, num_variants: int) -> List[Genome]:
             f"remaining candidates needed: {remaining}"
         )
 
-        chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=0.7)
+        chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=1.0)
         variants = chat.generate_variants(num_variants=num_variants, initial_prompt=USER_PROMPT)
         parsed_count = len(variants)
         print(f"[generation] Generation batch {attempts}: parsed {parsed_count} variant(s) from {num_variants} requests.")

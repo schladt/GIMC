@@ -1,4 +1,4 @@
-# Compiler settings for task_cmd_bsi.c
+# Compiler settings for task_cmd_bsi.cpp
 CC = g++
 CFLAGS = -O2 -static -Wall -Wextra
 LIBS = 

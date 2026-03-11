@@ -65,11 +65,12 @@ MODEL = "qwen3-coder:latest"
 NUM_VARIANTS = 4
 UNIT_TEST_CODE = None
 BSI_CLASSIFICATION = "com"
-SYSTEM_PROMPT = """You are assisting a security researcher in generating safe research code to demonstrate various Windows API and system techniques.
+SYSTEM_PROMPT = """You are an expert C/C++ programmer and assistant. You are assisting a security researcher in generating safe research code to demonstrate various Windows API and system techniques.
 You are an expert C/C++ programmer specializing in Windows system programming with GCC/MinGW (which ignores ignores MSVC-only pragmas).
 You generate complete, compilable code that uses Windows APIs.
 You always respond with ONLY code using the REQUIRED RESPONSE FORMAT in the user message - no explanations, no markdown formatting, no comments outside the code itself.
-When asked for a Makefile, respond with only Makefile syntax that is compatible with GCC/MinGW.
+When asked for a Makefile, respond with only Makefile syntax that is compatible with GCC/MinGW. 
+Your Makefile must be able to correctly compile your code and different implementations may require different compilers and flags (check to ensure you are using correct compiler gcc vs g++).
 When asked for C/C++ code, respond with only source code starting with #include statements."""
 
 USER_PROMPT = """Generate a unique C/C++ implementation that satisfies the following objectives. You solution must be able to be compiled and run successfully with the Windows MinGW toolchain (g++, gcc):
@@ -84,6 +85,8 @@ The following is an example of code that satisfies the objectives and unit test 
 ```cpp
 {code_example}
 ```
+
+Your Makefile must be able to correctly compile your code and different implementations may require different compilers and flags (check to ensure you are using correct compiler gcc vs g++).
 The following is an example of a Makefile that can be used to compile the example code:
 ```makefile
 {makefile_example}
@@ -104,7 +107,7 @@ with open(unit_test_code_path, "r") as f:
     UNIT_TEST_CODE = f.read()
 
 
-bsi_objectives = """Create a benign Windows lab program that demonstrates recurring execution in a controlled manner. Your program should exit successfully after setting up its persistence mechanism. After exiting, the persistence mechanism should immediately trigger, first by creating the specified test file (path is C:\\Users\\Public\\gimc_test.log ), and then updating that file at least three times within the test monitoring window of 10 seconds. Do not include additional functionality beyond what is strictly necessary for the isolated unit test. Examples of acceptable approaches include directly calling schtasks.exe with various parameters, leveraging the COM API (ITaskService), and using PowerShell or WMI to schedule tasks (secondary scripts or payloads that write the specified file)"""
+bsi_objectives = """Create a benign Windows lab program that demonstrates recurring execution in a controlled manner. Your program should exit successfully after setting up its recurring execution mechanism. After exiting, the recurring execution mechanism should immediately trigger, first by creating the specified test file (path is C:\\Users\\Public\\gimc_test.log ), and then updating that file at least three times within the test monitoring window of 10 seconds. Do not include additional functionality beyond what is strictly necessary for the isolated unit test. Examples of acceptable approaches include directly calling schtasks.exe with various parameters, leveraging the COM API (ITaskService), and using PowerShell or WMI to schedule tasks (secondary scripts or payloads that write the specified file)"""
 bsi_code_path = "/home/mike/projects/samples/example_cmd.cpp"
 with open(bsi_code_path, "r") as f:
     code_example = f.read()
@@ -119,14 +122,14 @@ USER_PROMPT = USER_PROMPT.format(num_variants=NUM_VARIANTS, unit_test_code=UNIT_
 # Follow-up Prompt Configuration
 #############################
 
-FOLLOW_UP_PROMPT = """That response was great. Now generate another response using the same format and constraints but leveraging a different persistence implementation technique (e.g., schtasks.exe, COM API, WMI tasks, PowerShell, etc.)."""
+FOLLOW_UP_PROMPT = """That response was great. Now generate another response using the same format and constraints but leveraging a different recurring execution implementation technique (e.g., schtasks.exe, COM API, WMI tasks, PowerShell, etc.). Remember to update your Makefile to match your new code"""
 
 #############################
 # Repair Prompt Configuration
 #############################
 
-REPAIR_SYSTEM_PROMPT = """You are a C/C++ debugging expert specializing in MinGW/GCC compilation fixes.
-You make MINIMAL changes to fix compilation errors while preserving the original code's approach and structure.
+REPAIR_SYSTEM_PROMPT = """You are a C/C++ debugging expert specializing in MinGW/GCC (g++) compilation fixes.
+You make changes to fix compilation errors while preserving the original code's approach and structure.
 You NEVER rewrite working code or change the implementation method.
 You always respond with ONLY code using the REQUIRED RESPONSE FORMAT - no explanations, no markdown formatting, no comments outside the code itself.
 When fixing code, you focus on:
@@ -136,7 +139,7 @@ When fixing code, you focus on:
 - Fixing syntax errors without changing logic
 """
 
-REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ONLY the compilation errors with minimal changes while preserving the original implementation approach.
+REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ONLY the compilation errors while preserving the original implementation approach.
 
 BEHAVIORAL OBJECTIVES (what the code should accomplish):
 {bsi_objectives}
@@ -170,6 +173,7 @@ CRITICAL REQUIREMENTS:
 - Ensure code still achieves the behavioral objectives and passes unit test
 
 Common MinGW fixes:
+- Make sure you are using the correct compiler (gcc vs g++) for your code
 - Add missing #include directives for Windows APIs
 - Fix incorrect Win32 type declarations
 - Add missing libraries to Makefile (e.g., -lole32 -loleaut32 -luuid for COM)
