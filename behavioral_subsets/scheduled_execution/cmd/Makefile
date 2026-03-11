@@ -1,10 +1,10 @@
 # Compiler settings for task_cmd_bsi.c
-CC = gcc
+CC = g++
 CFLAGS = -O2 -static -Wall -Wextra
 LIBS = 
 
 TARGET = task_cmd_bsi.exe
-SOURCE = task_cmd_bsi.c
+SOURCE = task_cmd_bsi.cpp
 
 all: $(TARGET)
 
