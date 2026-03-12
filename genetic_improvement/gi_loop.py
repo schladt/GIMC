@@ -39,8 +39,14 @@ REQUIRED_STAGE_KEYS = (
     "repaired_mutants",
 )
 EDITABLE_TAGS = ["struct", "function", "decl", "condition", "expr", "if_stmt", "call"]
-BOTTLENECK_THRESHOLD = 1e-2  # Standard deviation threshold for bottleneck detection
-BOTTLENECK_SAMPLE_SIZE = 5  # Number of top candidates to sample for bottleneck analysis
+
+# Multi-metric bottleneck detection thresholds
+BOTTLENECK_STD_THRESHOLD = 1e-2           # Fitness std threshold
+BOTTLENECK_CV_THRESHOLD = 0.05            # Coefficient of variation threshold (5%)
+BOTTLENECK_RANGE_THRESHOLD = 0.01         # Min fitness range threshold
+BOTTLENECK_STAGNATION_WINDOW = 3          # Number of generations to check for stagnation
+BOTTLENECK_STAGNATION_EPSILON = 1e-3      # Minimum improvement required
+BOTTLENECK_SAMPLE_SIZE = 5                # Number of top candidates to sample for bottleneck analysis
 
 
 def parse_args() -> argparse.Namespace:
@@ -201,19 +207,78 @@ def summarize_stage(stage: str, genomes: List[Genome]) -> None:
     )
 
 
-def detect_bottleneck(genomes: List[Genome], generation: int) -> bool:
-    """Detect if a bottleneck has occurred based on fitness standard deviation."""
+def detect_bottleneck(
+    genomes: List[Genome], 
+    generation: int,
+    best_fitness_history: List[float]
+) -> bool:
+    """Detect if a bottleneck has occurred using multiple metrics (OR configuration).
+    
+    A bottleneck is detected if ANY of the following conditions are met:
+    1. Fitness standard deviation is too low (population convergence)
+    2. Coefficient of variation is too low (relative diversity loss)
+    3. Fitness range (max-min) is too small (compressed fitness landscape)
+    4. Best fitness has stagnated over recent generations (no improvement)
+    
+    Args:
+        genomes: Current population of genomes
+        generation: Current generation number
+        best_fitness_history: List of best fitness values from all generations
+        
+    Returns:
+        True if bottleneck detected, False otherwise
+    """
     if not genomes or len(genomes) < 2:
         return False
     
     fitness_scores = [fitness_of(genome) for genome in genomes]
-    std_fit = statistics.pstdev(fitness_scores)
     
-    is_bottleneck = std_fit < BOTTLENECK_THRESHOLD
+    # Metric 1: Standard deviation
+    std_fit = statistics.pstdev(fitness_scores)
+    std_bottleneck = std_fit < BOTTLENECK_STD_THRESHOLD
+    
+    # Metric 2: Coefficient of Variation (relative diversity)
+    mean_fit = statistics.fmean(fitness_scores)
+    cv_bottleneck = False
+    cv = 0.0
+    if mean_fit > 0:
+        cv = std_fit / mean_fit
+        cv_bottleneck = cv < BOTTLENECK_CV_THRESHOLD
+    
+    # Metric 3: Fitness range compression
+    min_fit = min(fitness_scores)
+    max_fit = max(fitness_scores)
+    fitness_range = max_fit - min_fit
+    range_bottleneck = fitness_range < BOTTLENECK_RANGE_THRESHOLD
+    
+    # Metric 4: Fitness stagnation (no improvement over recent generations)
+    stagnation_bottleneck = False
+    improvement = 0.0
+    if len(best_fitness_history) >= BOTTLENECK_STAGNATION_WINDOW:
+        recent_best = max(best_fitness_history[-BOTTLENECK_STAGNATION_WINDOW:])
+        older_best = max(best_fitness_history[:-BOTTLENECK_STAGNATION_WINDOW]) if len(best_fitness_history) > BOTTLENECK_STAGNATION_WINDOW else 0.0
+        improvement = recent_best - older_best
+        stagnation_bottleneck = improvement < BOTTLENECK_STAGNATION_EPSILON
+    
+    # OR configuration: any metric triggers bottleneck
+    is_bottleneck = std_bottleneck or cv_bottleneck or range_bottleneck or stagnation_bottleneck
+    
     if is_bottleneck:
+        triggered_metrics = []
+        if std_bottleneck:
+            triggered_metrics.append(f"std={std_fit:.4e}<{BOTTLENECK_STD_THRESHOLD:.4e}")
+        if cv_bottleneck:
+            triggered_metrics.append(f"CV={cv:.4e}<{BOTTLENECK_CV_THRESHOLD:.4e}")
+        if range_bottleneck:
+            triggered_metrics.append(f"range={fitness_range:.4e}<{BOTTLENECK_RANGE_THRESHOLD:.4e}")
+        if stagnation_bottleneck:
+            triggered_metrics.append(f"stagnation: Δbest={improvement:.4e}<{BOTTLENECK_STAGNATION_EPSILON:.4e} over {BOTTLENECK_STAGNATION_WINDOW} gens")
+        
         print(
-            f"[bottleneck] Generation {generation}: Bottleneck detected "
-            f"(fitness std={std_fit:.4e} < threshold={BOTTLENECK_THRESHOLD:.4e})"
+            f"[bottleneck] Generation {generation}: Bottleneck detected\n"
+            f"[bottleneck]   Triggered metrics: {' | '.join(triggered_metrics)}\n"
+            f"[bottleneck]   Fitness stats: mean={mean_fit:.4f}, std={std_fit:.4e}, "
+            f"min={min_fit:.4f}, max={max_fit:.4f}, range={fitness_range:.4e}"
         )
     
     return is_bottleneck
@@ -511,6 +576,9 @@ def main() -> None:
     
     # Track bottleneck warnings across generations
     bottleneck_warnings: List[str] = []
+    
+    # Track best fitness history for stagnation detection
+    best_fitness_history: List[float] = []
 
     for gen_idx in range(completed, args.generations):
         gen_num = gen_idx + 1
@@ -581,22 +649,27 @@ def main() -> None:
         # Selection: keep top-N from all candidates observed in this generation.
         selected_for_next = select_top_n_from_generation(generation_record, args.population_size)
         
+        # Track best fitness for stagnation detection
+        if selected_for_next:
+            current_best = max(fitness_of(g) for g in selected_for_next)
+            best_fitness_history.append(current_best)
+        else:
+            best_fitness_history.append(0.0)
+        
         # Print generation summary for top N selected candidates
         print(f"\n[Generation {gen_num} Summary - Top N Selected]")
         summarize_stage("selected_population", selected_for_next)
         
         # Bottleneck detection: check if population has converged
-        if detect_bottleneck(selected_for_next, gen_num):
+        if detect_bottleneck(selected_for_next, gen_num, best_fitness_history):
             warning = generate_bottleneck_warning(selected_for_next, gen_num)
             if warning:
                 bottleneck_warnings.append(warning)
                 print(f"[bottleneck] Total warnings accumulated: {len(bottleneck_warnings)}")
             
-            # After bottleneck detection, only keep the champion for next generation
-            if selected_for_next:
-                champion = selected_for_next[0]
-                selected_for_next = [champion]
-                print(f"[bottleneck] Reduced selection to champion only (fitness={fitness_of(champion):.4f})")
+            # After bottleneck detection, pass nothing to next generation
+            selected_for_next = []
+            print(f"[bottleneck] Cleared selection - no candidates passed to next generation")
         
         save_checkpoint(checkpoint_path, generational_data)
 
