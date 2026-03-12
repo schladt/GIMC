@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import math
 import os
 import pickle
@@ -26,6 +27,7 @@ from genetic_improvement.config import (  # noqa: E402
     NUM_VARIANTS,
     SYSTEM_PROMPT,
     USER_PROMPT,
+    bsi_objectives,
 )
 from genetic_improvement.genome import Edit, Genome  # noqa: E402
 from genetic_improvement.ollamachat import OllamaChat  # noqa: E402
@@ -37,6 +39,8 @@ REQUIRED_STAGE_KEYS = (
     "repaired_mutants",
 )
 EDITABLE_TAGS = ["struct", "function", "decl", "condition", "expr", "if_stmt", "call"]
+BOTTLENECK_THRESHOLD = 1e-2  # Standard deviation threshold for bottleneck detection
+BOTTLENECK_SAMPLE_SIZE = 5  # Number of top candidates to sample for bottleneck analysis
 
 
 def parse_args() -> argparse.Namespace:
@@ -197,8 +201,87 @@ def summarize_stage(stage: str, genomes: List[Genome]) -> None:
     )
 
 
-def generate_new_variants(target_count: int, num_variants: int) -> List[Genome]:
-    """Generate and submit new variants until target count is reached or attempts are exhausted."""
+def detect_bottleneck(genomes: List[Genome], generation: int) -> bool:
+    """Detect if a bottleneck has occurred based on fitness standard deviation."""
+    if not genomes or len(genomes) < 2:
+        return False
+    
+    fitness_scores = [fitness_of(genome) for genome in genomes]
+    std_fit = statistics.pstdev(fitness_scores)
+    
+    is_bottleneck = std_fit < BOTTLENECK_THRESHOLD
+    if is_bottleneck:
+        print(
+            f"[bottleneck] Generation {generation}: Bottleneck detected "
+            f"(fitness std={std_fit:.4e} < threshold={BOTTLENECK_THRESHOLD:.4e})"
+        )
+    
+    return is_bottleneck
+
+
+def generate_bottleneck_warning(genomes: List[Genome], generation: int) -> str | None:
+    """Generate LLM warning message for detected bottleneck."""
+    if not genomes:
+        return None
+    
+    # Get top N candidates sorted by fitness
+    top_candidates = sorted(genomes, key=fitness_of, reverse=True)[:BOTTLENECK_SAMPLE_SIZE]
+    
+    # Decode code samples
+    code_samples = []
+    for genome in top_candidates:
+        candidate = genome.get_candidate()
+        if candidate and candidate.code:
+            try:
+                decoded_code = base64.b64decode(candidate.code).decode('utf-8')
+                code_samples.append(decoded_code)
+            except Exception as e:
+                print(f"[bottleneck] Warning: Failed to decode candidate code: {e}")
+                continue
+    
+    if not code_samples:
+        print("[bottleneck] Warning: No code samples available for bottleneck analysis")
+        return None
+    
+    # Generate warning message using LLM
+    print(f"[bottleneck] Generating warning message from {len(code_samples)} code sample(s)...")
+    bottleneck_system_prompt = (
+        "You are a helpful assistant that provides feedback on code snippets "
+        "and is an expert in cybersecurity TTPs and malware analysis"
+    )
+    bottleneck_chat = OllamaChat(model=MODEL, system_prompt=bottleneck_system_prompt, temperature=0.7)
+    
+    code_str = "\n\n=== code example ===\n\n".join(code_samples)
+    message_str = (
+        f"The following code samples (separated by === code example ===) appear to take "
+        f"the same high level approach as each other in attempting to accomplish the objective of: \n"
+        f"{bsi_objectives}\n\n"
+        f"Summarize this approach in two lines.\n"
+        f"Prepend your message with 'Previously tested solutions take the following approach:'\n"
+        f"Append your message with 'Do not generate any more solutions that take the same approach. "
+        f"Alternative approaches could include [include a short list of alternative approaches]'\n\n"
+        f"=== code example ===\n\n{code_str}"
+    )
+    
+    try:
+        response = bottleneck_chat.chat(message_str, stream=False)
+        print(f"[bottleneck] Generation {generation} warning generated successfully")
+        return response
+    except Exception as e:
+        print(f"[bottleneck] Error generating warning: {e}")
+        return None
+
+
+def generate_new_variants(
+    target_count: int, num_variants: int, bottleneck_warnings: List[str] | None = None
+) -> List[Genome]:
+    """Generate and submit new variants until target count is reached or attempts are exhausted.
+    
+    Args:
+        target_count: Number of variants to generate
+        num_variants: Batch size for LLM generation
+        bottleneck_warnings: List of warning messages from bottleneck detection to append to prompt
+    """
     if target_count <= 0:
         return []
 
@@ -221,8 +304,15 @@ def generate_new_variants(target_count: int, num_variants: int) -> List[Genome]:
             f"remaining candidates needed: {remaining}"
         )
 
+        # Build prompt with bottleneck warnings appended
+        prompt = USER_PROMPT
+        if bottleneck_warnings:
+            warnings_text = "\n\n".join(bottleneck_warnings)
+            prompt = f"{USER_PROMPT}\n\n=== IMPORTANT CONSTRAINTS ===\n{warnings_text}"
+            print(f"[generation] Using prompt with {len(bottleneck_warnings)} bottleneck warning(s)")
+        
         chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=1.0)
-        variants = chat.generate_variants(num_variants=num_variants, initial_prompt=USER_PROMPT)
+        variants = chat.generate_variants(num_variants=num_variants, initial_prompt=prompt)
         parsed_count = len(variants)
         print(f"[generation] Generation batch {attempts}: parsed {parsed_count} variant(s) from {num_variants} requests.")
 
@@ -418,6 +508,9 @@ def main() -> None:
         if completed > 0
         else []
     )
+    
+    # Track bottleneck warnings across generations
+    bottleneck_warnings: List[str] = []
 
     for gen_idx in range(completed, args.generations):
         gen_num = gen_idx + 1
@@ -431,14 +524,18 @@ def main() -> None:
                 f"[stage: population] Initial generation: creating {args.population_size} "
                 "new candidate(s)."
             )
-            population = generate_new_variants(args.population_size, args.num_variants)
+            population = generate_new_variants(
+                args.population_size, args.num_variants, bottleneck_warnings
+            )
         else:
             print(
                 f"[stage: population] Carrying over {len(selected_for_next)} selected candidate(s) "
                 f"and creating {args.population_size} fresh candidate(s) "
                 f"(target combined population: {len(selected_for_next) + args.population_size})."
             )
-            fresh_population = generate_new_variants(args.population_size, args.num_variants)
+            fresh_population = generate_new_variants(
+                args.population_size, args.num_variants, bottleneck_warnings
+            )
             population = selected_for_next + fresh_population
 
         generation_record: Dict[str, List[Genome]] = {"population": population}
@@ -487,6 +584,19 @@ def main() -> None:
         # Print generation summary for top N selected candidates
         print(f"\n[Generation {gen_num} Summary - Top N Selected]")
         summarize_stage("selected_population", selected_for_next)
+        
+        # Bottleneck detection: check if population has converged
+        if detect_bottleneck(selected_for_next, gen_num):
+            warning = generate_bottleneck_warning(selected_for_next, gen_num)
+            if warning:
+                bottleneck_warnings.append(warning)
+                print(f"[bottleneck] Total warnings accumulated: {len(bottleneck_warnings)}")
+            
+            # After bottleneck detection, only keep the champion for next generation
+            if selected_for_next:
+                champion = selected_for_next[0]
+                selected_for_next = [champion]
+                print(f"[bottleneck] Reduced selection to champion only (fitness={fitness_of(champion):.4f})")
         
         save_checkpoint(checkpoint_path, generational_data)
 

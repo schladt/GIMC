@@ -70,7 +70,7 @@ You are an expert C/C++ programmer specializing in Windows system programming wi
 You generate complete, compilable code that uses Windows APIs.
 You always respond with ONLY code using the REQUIRED RESPONSE FORMAT in the user message - no explanations, no markdown formatting, no comments outside the code itself.
 When asked for a Makefile, respond with only Makefile syntax that is compatible with GCC/MinGW. 
-Your Makefile must be able to correctly compile your code and different implementations may require different compilers and flags (check to ensure you are using correct compiler gcc vs g++).
+Your Makefile must be able to correctly compile your code (check to ensure you are using correct compiler gcc vs g++).
 When asked for C/C++ code, respond with only source code starting with #include statements."""
 
 USER_PROMPT = """Generate a unique C/C++ implementation that satisfies the following objectives. You solution must be able to be compiled and run successfully with the Windows MinGW toolchain (g++, gcc):
@@ -86,7 +86,7 @@ The following is an example of code that satisfies the objectives and unit test 
 {code_example}
 ```
 
-Your Makefile must be able to correctly compile your code and different implementations may require different compilers and flags (check to ensure you are using correct compiler gcc vs g++).
+Your Makefile must be able to correctly compile your code (check to ensure you are using correct compiler gcc vs g++).
 The following is an example of a Makefile that can be used to compile the example code:
 ```makefile
 {makefile_example}
@@ -130,16 +130,15 @@ FOLLOW_UP_PROMPT = """That response was great. Now generate another response usi
 
 REPAIR_SYSTEM_PROMPT = """You are a C/C++ debugging expert specializing in MinGW/GCC (g++) compilation fixes.
 You make changes to fix compilation errors while preserving the original code's approach and structure.
-You NEVER rewrite working code or change the implementation method.
 You always respond with ONLY code using the REQUIRED RESPONSE FORMAT - no explanations, no markdown formatting, no comments outside the code itself.
 When fixing code, you focus on:
 - Adding missing #include directives
 - Correcting Win32 API types and declarations
 - Adding missing linker flags for Windows APIs
-- Fixing syntax errors without changing logic
+- Fixing syntax errors
 """
 
-REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ONLY the compilation errors while preserving the original implementation approach.
+REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ALL compilation errors
 
 BEHAVIORAL OBJECTIVES (what the code should accomplish):
 {bsi_objectives}

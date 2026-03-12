@@ -198,9 +198,9 @@ class Genome:
             bsi_objectives=bsi_objectives_import
         )
         
-        # Call LLM to repair code with lower temperature for conservative fixes
+        # Call LLM to repair code
         print(f"Requesting LLM repair for candidate {self.candidate_hash[:8]}...")
-        chat = OllamaChat(model=MODEL, system_prompt=REPAIR_SYSTEM_PROMPT, temperature=0.2, timeout_s=180)
+        chat = OllamaChat(model=MODEL, system_prompt=REPAIR_SYSTEM_PROMPT, temperature=0.5, timeout_s=180)
         
         try:
             repair_response = chat.chat(repair_prompt, stream=False)
