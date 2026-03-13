@@ -44,7 +44,7 @@ EDITABLE_TAGS = ["struct", "function", "decl", "condition", "expr", "if_stmt", "
 BOTTLENECK_STD_THRESHOLD = 1e-2           # Fitness std threshold
 BOTTLENECK_CV_THRESHOLD = 0.05            # Coefficient of variation threshold (5%)
 BOTTLENECK_RANGE_THRESHOLD = 0.01         # Min fitness range threshold
-BOTTLENECK_STAGNATION_WINDOW = 3          # Number of generations to check for stagnation
+BOTTLENECK_STAGNATION_WINDOW = 5          # Number of generations to check for stagnation
 BOTTLENECK_STAGNATION_EPSILON = 1e-3      # Minimum improvement required
 BOTTLENECK_SAMPLE_SIZE = 5                # Number of top candidates to sample for bottleneck analysis
 
@@ -210,7 +210,7 @@ def summarize_stage(stage: str, genomes: List[Genome]) -> None:
 def detect_bottleneck(
     genomes: List[Genome], 
     generation: int,
-    mean_fitness_history: List[float]
+    max_fitness_history: List[float]
 ) -> tuple[bool, dict | None]:
     """Detect if a bottleneck has occurred using multiple metrics (OR configuration).
     
@@ -218,12 +218,12 @@ def detect_bottleneck(
     1. Fitness standard deviation is too low (population convergence)
     2. Coefficient of variation is too low (relative diversity loss)
     3. Fitness range (max-min) is too small (compressed fitness landscape)
-    4. Mean fitness has stagnated over recent generations (no improvement)
+    4. Maximum fitness has stagnated over recent generations (no improvement)
     
     Args:
         genomes: Current population of genomes
         generation: Current generation number
-        mean_fitness_history: List of mean fitness values from all generations
+        max_fitness_history: List of maximum fitness values from all generations
         
     Returns:
         Tuple of (is_bottleneck, bottleneck_info_dict or None)
@@ -254,10 +254,10 @@ def detect_bottleneck(
     # Metric 4: Fitness stagnation (no improvement over recent generations)
     stagnation_bottleneck = False
     improvement = 0.0
-    if len(mean_fitness_history) >= BOTTLENECK_STAGNATION_WINDOW:
-        recent_mean = statistics.fmean(mean_fitness_history[-BOTTLENECK_STAGNATION_WINDOW:])
-        older_mean = statistics.fmean(mean_fitness_history[:-BOTTLENECK_STAGNATION_WINDOW]) if len(mean_fitness_history) > BOTTLENECK_STAGNATION_WINDOW else 0.0
-        improvement = recent_mean - older_mean
+    if len(max_fitness_history) >= BOTTLENECK_STAGNATION_WINDOW:
+        recent_max = max(max_fitness_history[-BOTTLENECK_STAGNATION_WINDOW:])
+        older_max = max(max_fitness_history[:-BOTTLENECK_STAGNATION_WINDOW]) if len(max_fitness_history) > BOTTLENECK_STAGNATION_WINDOW else 0.0
+        improvement = recent_max - older_max
         stagnation_bottleneck = improvement < BOTTLENECK_STAGNATION_EPSILON
     
     # OR configuration: any metric triggers bottleneck
@@ -272,7 +272,7 @@ def detect_bottleneck(
         if range_bottleneck:
             triggered_metrics.append(f"range={fitness_range:.4e}<{BOTTLENECK_RANGE_THRESHOLD:.4e}")
         if stagnation_bottleneck:
-            triggered_metrics.append(f"stagnation: Δ mean={improvement:.4e}<{BOTTLENECK_STAGNATION_EPSILON:.4e} over {BOTTLENECK_STAGNATION_WINDOW} gens")
+            triggered_metrics.append(f"stagnation: Δ max={improvement:.4e}<{BOTTLENECK_STAGNATION_EPSILON:.4e} over {BOTTLENECK_STAGNATION_WINDOW} gens")
         
         print(
             f"[bottleneck] Generation {generation}: Bottleneck detected\n"
@@ -512,9 +512,17 @@ def mutate_population(repaired_population: List[Genome], mutation_rate: float) -
 
     mutated_population: List[Genome] = []
     for genome in repaired_population:
-        mutated_hash = genome.apply_edits()
-        if mutated_hash is not None:
-            mutated_population.append(Genome(mutated_hash, build_genome=True))
+        # Check if any edits were actually added during mutation
+        total_edits = sum(len(chromosome.edits) for chromosome in genome.chromosomes)
+        if total_edits == 0:
+            # No mutations applied - reuse existing genome without re-evaluation
+            # This prevents unnecessary re-submission and fitness score changes
+            mutated_population.append(genome)
+        else:
+            # Mutations applied - generate new candidate via apply_edits()
+            mutated_hash = genome.apply_edits()
+            if mutated_hash is not None:
+                mutated_population.append(Genome(mutated_hash, build_genome=True))
 
     return mutated_population
 
@@ -598,8 +606,8 @@ def main() -> None:
     # Track bottleneck warnings across generations
     bottleneck_warnings: List[str] = []
     
-    # Track mean fitness history for stagnation detection
-    mean_fitness_history: List[float] = []
+    # Track max fitness history for stagnation detection
+    max_fitness_history: List[float] = []
     
     # Track all bottleneck events for summary
     bottleneck_events: List[Dict] = []
@@ -673,19 +681,19 @@ def main() -> None:
         # Selection: keep top-N from all candidates observed in this generation.
         selected_for_next = select_top_n_from_generation(generation_record, args.population_size)
         
-        # Track mean fitness for stagnation detection
+        # Track max fitness for stagnation detection
         if selected_for_next:
-            current_mean = statistics.fmean([fitness_of(g) for g in selected_for_next])
-            mean_fitness_history.append(current_mean)
+            current_max = max([fitness_of(g) for g in selected_for_next])
+            max_fitness_history.append(current_max)
         else:
-            mean_fitness_history.append(0.0)
+            max_fitness_history.append(0.0)
         
         # Print generation summary for top N selected candidates
         print(f"\n[Generation {gen_num} Summary - Top N Selected]")
         summarize_stage("selected_population", selected_for_next)
         
         # Bottleneck detection: check if population has converged
-        is_bottleneck, bottleneck_info = detect_bottleneck(selected_for_next, gen_num, mean_fitness_history)
+        is_bottleneck, bottleneck_info = detect_bottleneck(selected_for_next, gen_num, max_fitness_history)
         if is_bottleneck:
             # Store bottleneck event
             bottleneck_events.append(bottleneck_info)
@@ -697,7 +705,7 @@ def main() -> None:
             
             # After bottleneck detection, pass nothing to next generation and reset fitness history
             selected_for_next = []
-            mean_fitness_history = []
+            max_fitness_history = []
             print(f"[bottleneck] Cleared selection and reset fitness history - no candidates passed to next generation")
         
         save_checkpoint(checkpoint_path, generational_data)
