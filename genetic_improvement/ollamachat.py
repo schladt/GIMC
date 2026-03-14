@@ -135,6 +135,9 @@ class OllamaChat:
         First request uses initial_prompt. Subsequent requests ask for different
         implementation approaches while maintaining chat context.
         
+        IMPORTANT: This method MUST be called sequentially (not in parallel)
+        because each follow-up variant depends on the conversation history.
+        
         Args:
             num_variants: Number of variants to generate
             initial_prompt: Initial prompt for first variant

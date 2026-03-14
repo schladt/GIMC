@@ -160,7 +160,7 @@ class Genome:
         """
         import base64
         from genetic_improvement.ollamachat import OllamaChat
-        from genetic_improvement.config import REPAIR_SYSTEM_PROMPT, REPAIR_CODE_PROMPT, UNIT_TEST_CODE, MODEL
+        from genetic_improvement.config import REPAIR_SYSTEM_PROMPT, REPAIR_CODE_PROMPT, UNIT_TEST_CODE, REPAIR_MODEL
         
         # Load candidate
         candidate = self.get_candidate()
@@ -191,17 +191,15 @@ class Genome:
         from genetic_improvement.config import bsi_objectives as bsi_objectives_import
         
         repair_prompt = REPAIR_CODE_PROMPT.format(
-            unit_test_code=unit_test_code_import,
             source_code=source_code,
             makefile_code=makefile_code,
             error_output=error_output,
-            bsi_objectives=bsi_objectives_import
         )
-        
+        # print(f"Repair prompt for candidate {self.candidate_hash[:8]}:\n{repair_prompt}\n") # DEBUG
         # Call LLM to repair code
         print(f"Requesting LLM repair for candidate {self.candidate_hash[:8]}...")
-        chat = OllamaChat(model=MODEL, system_prompt=REPAIR_SYSTEM_PROMPT, temperature=0.5, timeout_s=180)
-        
+        chat = OllamaChat(model=REPAIR_MODEL, system_prompt=REPAIR_SYSTEM_PROMPT, temperature=0.5, timeout_s=180)
+        # print(chat.model)
         try:
             repair_response = chat.chat(repair_prompt, stream=False)
         except requests.exceptions.ReadTimeout:

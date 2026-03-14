@@ -61,7 +61,8 @@ class Config(object):
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 CHAT_ENDPOINT = f"{OLLAMA_HOST}/api/chat"
-MODEL = "qwen3-coder:latest"
+MODEL = "qwen3-coder-next:cloud"
+REPAIR_MODEL = "qwen3-coder-next:cloud"
 NUM_VARIANTS = 4
 UNIT_TEST_CODE = None
 BSI_CLASSIFICATION = "com"
@@ -131,17 +132,9 @@ FOLLOW_UP_PROMPT = """That response was great. Now generate another response usi
 REPAIR_SYSTEM_PROMPT = """You are a C/C++ debugging expert specializing in MinGW/GCC (g++) compilation fixes.
 You make changes to fix compilation errors while preserving the original code's approach and structure.
 You always respond with ONLY code using the REQUIRED RESPONSE FORMAT - no explanations, no markdown formatting, no comments outside the code itself.
-When fixing code, you focus on:
-- Adding missing #include directives
-- Correcting Win32 API types and declarations
-- Adding missing linker flags for Windows APIs
-- Fixing syntax errors
 """
 
-REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ALL compilation errors
-
-BEHAVIORAL OBJECTIVES (what the code should accomplish):
-{bsi_objectives}
+REPAIR_CODE_PROMPT = """The following C/C++ code failed to compile. Your task is to fix ALL compilation errors and to ensure the associated makefile will compile the program in the Windows MinGW/GCC (g++) environment.
 
 BUILD ERROR OUTPUT (focus on fixing these specific errors):
 ```
@@ -158,18 +151,10 @@ ORIGINAL MAKEFILE:
 {makefile_code}
 ```
 
-The following unit test must pass after repair:
-```python
-{unit_test_code}
-```
-
 CRITICAL REQUIREMENTS:
-- Make MINIMAL changes - fix only what's broken in the error output above
-- DO NOT rewrite or refactor working code
-- Keep the EXACT SAME implementation approach (same Windows APIs, same method)
+- Keep the code's original implementation approach
 - Fix syntax errors, missing headers, wrong types, etc. shown in the build output
 - Maintain compatibility with MinGW toolchain (g++, gcc)
-- Ensure code still achieves the behavioral objectives and passes unit test
 
 Common MinGW fixes:
 - Make sure you are using the correct compiler (gcc vs g++) for your code

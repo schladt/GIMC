@@ -13,6 +13,7 @@ import statistics
 import sys
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Iterable, List
 
 # Ensure project root is importable when running this file directly.
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
         "--population-size",
         type=int,
         default=20,
-        help="Base population size N. Generation 0 starts with N; later generations start with 2N.",
+        help="Base population size N. Generation 0 starts with N; later generations start with 2N. Must be a multiple of --num-variants.",
     )
     parser.add_argument(
         "-G",
@@ -361,102 +362,163 @@ def generate_bottleneck_warning(genomes: List[Genome], generation: int) -> str |
 def generate_new_variants(
     target_count: int, num_variants: int, bottleneck_warnings: List[str] | None = None
 ) -> List[Genome]:
-    """Generate and submit new variants until target count is reached or attempts are exhausted.
+    """Generate and submit new variants using parallelized batches.
+    
+    Each batch generates num_variants sequentially (maintaining conversation context),
+    but multiple batches run in parallel. For example, if target_count=8 and num_variants=4,
+    we run 2 batches in parallel, each generating 4 variants sequentially.
     
     Args:
-        target_count: Number of variants to generate
-        num_variants: Batch size for LLM generation
+        target_count: Number of variants to generate (should be multiple of num_variants)
+        num_variants: Number of variants per sequential batch
         bottleneck_warnings: List of warning messages from bottleneck detection to append to prompt
     """
     if target_count <= 0:
         return []
 
-    batch_size = max(1, num_variants)
-    genomes: List[Genome] = []
-    attempts = 0
-    max_attempts = max(3, math.ceil(target_count / batch_size) * 3)
-
+    # Calculate how many batches we need
+    num_batches = math.ceil(target_count / num_variants)
+    
+    # Build prompt with bottleneck warnings appended
+    prompt = USER_PROMPT
+    if bottleneck_warnings:
+        warnings_text = "\n\n".join(bottleneck_warnings)
+        prompt = f"{USER_PROMPT}\n\n=== IMPORTANT CONSTRAINTS ===\n{warnings_text}"
+        print(f"[generation] Using prompt with {len(bottleneck_warnings)} bottleneck warning(s)")
+    
     print(
         f"[generation] Target new candidates: {target_count} | "
-        f"Variants per batch: {batch_size} | "
-        f"max generation batches allowed: {max_attempts} (stops early once target is reached)"
+        f"Variants per batch: {num_variants} | "
+        f"Number of parallel batches: {num_batches}"
     )
-
-    while len(genomes) < target_count and attempts < max_attempts:
-        attempts += 1
-        remaining = target_count - len(genomes)
-        print(
-            f"[generation] LLM generation batch {attempts} (up to {max_attempts}); "
-            f"remaining candidates needed: {remaining}"
-        )
-
-        # Build prompt with bottleneck warnings appended
-        prompt = USER_PROMPT
-        if bottleneck_warnings:
-            warnings_text = "\n\n".join(bottleneck_warnings)
-            prompt = f"{USER_PROMPT}\n\n=== IMPORTANT CONSTRAINTS ===\n{warnings_text}"
-            print(f"[generation] Using prompt with {len(bottleneck_warnings)} bottleneck warning(s)")
-        
+    
+    def generate_batch(batch_idx: int) -> tuple[int, List[Dict[str, str]]]:
+        """Generate one batch of variants sequentially (maintains conversation context)."""
+        print(f"[generation] Starting batch {batch_idx+1}/{num_batches}...")
         chat = OllamaChat(model=MODEL, system_prompt=SYSTEM_PROMPT, temperature=1.0)
         variants = chat.generate_variants(num_variants=num_variants, initial_prompt=prompt)
-        parsed_count = len(variants)
-        print(f"[generation] Generation batch {attempts}: parsed {parsed_count} variant(s) from {num_variants} requests.")
-
-        if not variants:
-            print("[generation] Warning: parsed 0 variants from this generation batch.")
+        print(f"[generation] Batch {batch_idx+1}/{num_batches} complete: generated {len(variants)} variants")
+        return (batch_idx, variants)
+    
+    # Generate all batches in parallel
+    all_variants = []
+    max_workers = min(num_batches, 8)  # Limit concurrent batches
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(generate_batch, i): i for i in range(num_batches)}
+        
+        batch_results = [None] * num_batches
+        for future in as_completed(futures):
+            try:
+                batch_idx, variants = future.result()
+                batch_results[batch_idx] = variants
+            except Exception as e:
+                batch_idx = futures[future]
+                print(f"[generation] ERROR: Batch {batch_idx+1} failed: {e}")
+                batch_results[batch_idx] = []
+        
+        # Flatten results from all batches
+        for batch_variants in batch_results:
+            if batch_variants:
+                all_variants.extend(batch_variants)
+    
+    print(f"[generation] All batches complete: generated {len(all_variants)} total variants")
+    
+    if not all_variants:
+        print("[generation] Warning: No variants were successfully generated")
+        return []
+    
+    # Submit variants and create genomes
+    candidate_hashes = OllamaChat.submit_variants(all_variants, classification=BSI_CLASSIFICATION)
+    submitted_count = len(candidate_hashes)
+    accepted_count = sum(1 for candidate_hash in candidate_hashes if candidate_hash is not None)
+    
+    genomes: List[Genome] = []
+    for candidate_hash in candidate_hashes:
+        if candidate_hash is None:
             continue
-
-        candidate_hashes = OllamaChat.submit_variants(variants, classification=BSI_CLASSIFICATION)
-        submitted_count = len(candidate_hashes)
-        accepted_count = sum(1 for candidate_hash in candidate_hashes if candidate_hash is not None)
-        added_count = 0
-        for candidate_hash in candidate_hashes:
-            if candidate_hash is None:
-                continue
-            genomes.append(Genome(candidate_hash=candidate_hash))
-            added_count += 1
-            if len(genomes) >= target_count:
-                break
-
-        failed_submissions = submitted_count - accepted_count
-        skipped_due_to_target = max(0, accepted_count - added_count)
-        print(
-            f"[generation] Generation batch {attempts}: submitted={submitted_count}, "
-            f"accepted={accepted_count}, submission_failures={failed_submissions}, "
-            f"added={added_count}, skipped_due_to_target={skipped_due_to_target}, "
-            f"total_created={len(genomes)}/{target_count}"
-        )
-
-    if len(genomes) >= target_count:
-        print(
-            f"[generation] Target reached after {attempts} generation batch(es); "
-            f"{max_attempts - attempts} batch(es) remained unused."
-        )
-
+        genomes.append(Genome(candidate_hash=candidate_hash))
+        if len(genomes) >= target_count:
+            break
+    
+    failed_submissions = submitted_count - accepted_count
+    skipped_due_to_target = max(0, accepted_count - len(genomes))
+    print(
+        f"[generation] Submission complete: submitted={submitted_count}, "
+        f"accepted={accepted_count}, submission_failures={failed_submissions}, "
+        f"added={len(genomes)}, skipped_due_to_target={skipped_due_to_target}"
+    )
+    
     if len(genomes) < target_count:
         print(
             f"[generation] Warning: requested {target_count} new candidates but only created {len(genomes)}."
         )
-
+    
     return genomes[:target_count]
 
 
 def repair_population(population: Iterable[Genome], stage_name: str) -> List[Genome]:
-    """Repair candidates with errors and keep originals when repair fails."""
-    repaired_population: List[Genome] = []
-
-    for idx, genome in enumerate(population, start=1):
+    """Repair candidates with errors in parallel and keep originals when repair fails."""
+    population_list = list(population)
+    
+    # Identify which genomes need repair
+    needs_repair = []
+    repair_indices = []
+    no_repair_needed = []
+    
+    for idx, genome in enumerate(population_list):
         candidate = genome.get_candidate()
         if candidate and candidate.error_message is not None:
-            print(f"[{stage_name}] Repairing candidate {idx} ({genome.candidate_hash[:8]})")
-            repaired_hash = genome.repair_code()
-            if repaired_hash is not None:
-                repaired_population.append(Genome(repaired_hash))
-            else:
-                repaired_population.append(genome)
+            needs_repair.append(genome)
+            repair_indices.append(idx)
         else:
-            repaired_population.append(genome)
-
+            no_repair_needed.append((idx, genome))
+    
+    if not needs_repair:
+        print(f"[{stage_name}] No candidates need repair")
+        return population_list
+    
+    print(f"[{stage_name}] Repairing {len(needs_repair)} candidate(s) in parallel...")
+    
+    def repair_single_genome(genome: Genome, idx: int) -> tuple[int, Genome]:
+        """Repair a single genome and return the index and result."""
+        print(f"[{stage_name}] Repairing candidate {idx+1} ({genome.candidate_hash[:8]})")
+        repaired_hash = genome.repair_code()
+        if repaired_hash is not None:
+            return (idx, Genome(repaired_hash))
+        else:
+            return (idx, genome)
+    
+    # Repair genomes in parallel
+    repaired_results = {}
+    max_workers = min(len(needs_repair), 8)  # Limit concurrent repairs
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(repair_single_genome, genome, idx): (idx, genome) 
+                   for idx, genome in zip(repair_indices, needs_repair)}
+        
+        for future in as_completed(futures):
+            try:
+                idx, repaired_genome = future.result()
+                repaired_results[idx] = repaired_genome
+            except Exception as e:
+                idx, original_genome = futures[future]
+                print(f"[{stage_name}] ERROR: Failed to repair candidate at index {idx}: {e}")
+                # Fall back to original genome on error
+                repaired_results[idx] = original_genome
+    
+    # Reconstruct population in original order
+    repaired_population = [None] * len(population_list)
+    
+    # Add repaired genomes
+    for idx, genome in repaired_results.items():
+        repaired_population[idx] = genome
+    
+    # Add genomes that didn't need repair
+    for idx, genome in no_repair_needed:
+        repaired_population[idx] = genome
+    
+    print(f"[{stage_name}] Parallel repair complete: {len(needs_repair)} candidates processed")
     return repaired_population
 
 
@@ -566,6 +628,11 @@ def main() -> None:
         raise ValueError("--mutation-rate must be in [0.0, 1.0]")
     if args.num_variants <= 0:
         raise ValueError("--num-variants must be > 0")
+    if args.population_size % args.num_variants != 0:
+        raise ValueError(
+            f"--population-size ({args.population_size}) must be a multiple of "
+            f"--num-variants ({args.num_variants}) for efficient parallel batch generation"
+        )
 
     if args.seed is not None:
         random.seed(args.seed)
