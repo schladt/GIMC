@@ -82,6 +82,17 @@ The following unit test must be satisfied to validate each implementation (pay a
 {unit_test_code}
 ```
 
+The following is an example of code that satisfies the objectives and unit test (pay attention to filenames and other details it looks for):
+```cpp
+{code_example}
+```
+
+Your Makefile must be able to correctly compile your code (check to ensure you are using correct compiler gcc vs g++).
+The following is an example of a Makefile that can be used to compile the example code:
+```makefile
+{makefile_example}
+```
+
 REQUIRED RESPONSE FORMAT: Provide your response in the following format. FOLLOW THIS EXACTLY. DO NOT DEVIATE FROM THIS FORMAT OR ADD ANY EXTRA TEXT:
 === SOURCE ===
 ```cpp
@@ -98,9 +109,15 @@ with open(unit_test_code_path, "r") as f:
 
 
 bsi_objectives = """Create a benign Windows lab program that demonstrates recurring execution in a controlled manner. Your program should exit successfully after setting up its recurring execution mechanism. After exiting, the recurring execution mechanism should immediately trigger, first by creating the specified test file (path is C:\\Users\\Public\\gimc_test.log ), and then updating that file at least three times within the test monitoring window of 10 seconds. Do not include additional functionality beyond what is strictly necessary for the isolated unit test. Examples of acceptable approaches include directly calling schtasks.exe with various parameters, leveraging the COM API (ITaskService), and using PowerShell or WMI to schedule tasks (secondary scripts or payloads that write the specified file)"""
+bsi_code_path = "/home/mike/projects/samples/wmi.cpp"
+with open(bsi_code_path, "r") as f:
+    code_example = f.read()
 
+makefile_path = "/home/mike/projects/GIMC/behavioral_subsets/scheduled_execution/wmi/Makefile"
+with open(makefile_path, "r") as f:
+    makefile_example = f.read()
 
-USER_PROMPT = USER_PROMPT.format(num_variants=NUM_VARIANTS, unit_test_code=UNIT_TEST_CODE, bsi_objectives=bsi_objectives)
+USER_PROMPT = USER_PROMPT.format(num_variants=NUM_VARIANTS, unit_test_code=UNIT_TEST_CODE, bsi_objectives=bsi_objectives, code_example=code_example, makefile_example=makefile_example)
 
 #############################
 # Follow-up Prompt Configuration
