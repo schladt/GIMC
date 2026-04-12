@@ -117,10 +117,13 @@ NUM_CLASSES = 4              # Malware families + benign
 classifier/
 ├── README.md                   # This documentation
 ├── data-preprocessing.ipynb    # Data loading and preprocessing pipeline
+├── data-preprocessing-DSAA.ipynb # DSAA dataset preprocessing variant
 ├── tokenizer-training.ipynb    # Custom tokenizer training
+├── tokenizer-training-DSAA.ipynb # DSAA tokenizer variant
 ├── mlp4mal.ipynb              # MLP model training and evaluation
 ├── mlp4mal-test.ipynb         # MLP model testing
-├── cnn4mal.ipynb              # CNN model training and evaluation  
+├── cnn4mal.ipynb              # CNN model training and evaluation (malware)
+├── cnn4bsi.ipynb              # CNN model training for behavioral subsets
 ├── lstm4mal.ipynb             # LSTM model training and evaluation
 ├── bert4mal.ipynb             # Transformer model training and evaluation
 ├── test-metrics.ipynb         # Comprehensive model comparison
@@ -132,6 +135,7 @@ classifier/
 └── utils/                     # Supporting utilities
     ├── mal_data.py           # Data loading and preprocessing
     ├── train.py              # Training and evaluation functions
+    ├── train_old.py          # Legacy training utilities
     ├── batch.py              # Batch processing utilities
     └── plot.py               # Visualization utilities
 ```

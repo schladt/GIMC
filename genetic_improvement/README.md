@@ -11,7 +11,7 @@ This system provides a multi-component architecture for safely evaluating GI-evo
 1. **Evaluation Server** (`evaluation_server.py`) - Flask API on Linux host
 2. **Build Agent** (`build_agent.py`) - Windows VM agent for compilation and testing
 3. **Monitor** (`monitor.py`) - Linux host agent for classification and VM management
-4. **Database Models** (`models.py`) - Candidate table with full schema
+4. **Database Models** (`../models.py` in project root) - Unified models including Candidate table
 5. **Configuration** (`config.py`) - VM settings and database connection
 
 ### 🚧 Work In Progress
@@ -44,7 +44,7 @@ Flask-based API server running on Linux host. Manages candidate tracking and coo
 ### 2. Candidate Database Table
 Tracks status and fitness scores for each submitted code candidate.
 
-**Schema (`models.py`):**
+**Schema** (defined in `../models.py` in project root):
 - `hash` (sha256, primary key) - unique identifier for code
 - `code` (text, base64 encoded) - submitted C source code
 - `status` (integer) - 0=pending, 1=building, 2=analyzing, 3=complete, 4=error
@@ -280,7 +280,7 @@ curl -X GET http://localhost:5090/info/<hash> \
 - All ES logic in one place (~200 lines)
 - Fewer imports and module dependencies
 - Easier to understand for future modifications
-- Database models separated into `models.py` for clarity
+- Database models separated into `../models.py` (project root) for unified schema shared with sandbox
 
 ## Implementation Status
 

@@ -218,22 +218,23 @@ The system will:
 
 ### Component Setup
 
-1. **🏃‍♂️ Start the Sandbox**:
-```bash
-cd sandbox/
-python run.py 0.0.0.0 5000
-```
+**Note**: The recommended way to start all services is using the unified launcher (see above). Individual components can be accessed as follows:
 
-2. **🤖 Train a Classifier**:
+1. **🤖 Train a Classifier**:
 ```bash
 cd classifier/
 jupyter notebook mlp4mal.ipynb
 ```
 
-3. **🧬 Run Genetic Improvement**:
+2. **🧬 Explore Genetic Improvement**:
 ```bash
-cd gi/
-python gi_demo.ipynb
+cd genetic_improvement/
+jupyter notebook gi_demo.ipynb
+```
+
+3. **🏃‍♂️ Manual Sandbox Server** (if not using launcher):
+```bash
+python -m sandbox.sandbox_server 0.0.0.0 5000
 ```
 
 ## 📊 Research Results
@@ -286,8 +287,8 @@ python gi_demo.ipynb
 
 - 📖 **[Classifier README](./classifier/README.md)**: Detailed NLP model documentation
 - 📦 **[Sandbox README](./sandbox/README.md)**: Complete sandbox setup and usage guide  
-- 🧬 **[GI Documentation](./gi/)**: Genetic improvement algorithms and fitness functions
-- 🔬 **[Research Prototypes](./prototypes/)**: Experimental code and proof-of-concepts
+- 🧬 **[Genetic Improvement README](./genetic_improvement/README.md)**: Code evolution pipeline and fitness functions
+- 🔬 **[Behavioral Subsets README](./behavioral_subsets/README.md)**: Malware TTP implementations
 
 ## ⚠️ Research Ethics & Safety
 

@@ -19,7 +19,7 @@ The GIMC Sandbox is a dynamic malware analysis system designed to analyze Window
 
 #### Web Application
 - `sandbox_server.py`: Main Flask application with all routes and logic
-- `models.py`: Database models using SQLAlchemy (Sample, Analysis, Tag, User)
+- `../models.py`: Unified database models in project root using SQLAlchemy (Sample, Analysis, Tag, User, Candidate)
 - `config.py`: Configuration management and VM definitions (loads from settings.json)
 
 #### Analysis Components
