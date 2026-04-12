@@ -52,3 +52,9 @@ grid_search_logs/
 
 # notes
 notes/*
+
+# memory bank files
+.cursor/
+.github/
+AGENTS.md
+memory-bank/
